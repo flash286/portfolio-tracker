@@ -86,31 +86,33 @@ yfinance requires exchange suffixes for European ETFs. The `price_fetcher.py` ha
 3. Falls back to trying `.DE`, `.L`, `.AS`, `.PA`, `.MI` suffixes
 4. Full error handling — never crashes on bad tickers
 
-Current overrides include all 8 Revolut ETFs + 5 Portfolio A ETFs.
+Current overrides include all 8 Revolut ETFs + 4 Portfolio A ETFs (VWCE, VVSM, HEAL, VAGF).
 
 ## Cash Balance System
 
 Cash transactions are stored in `cash_transactions` table with types:
-- `top_up` — money deposited
-- `withdrawal` — money withdrawn
-- `buy` — cash spent (negative amount)
-- `sell` — cash received (positive amount)
-- `dividend` — cash received from dividends
-- `fee` — management fees (negative amount)
+- `top_up` — money deposited (positive)
+- `withdrawal` — money withdrawn (negative)
+- `buy` — cash spent on purchases (negative)
+- `sell` — cash received from sales (positive)
+- `dividend` — cash received from dividends (positive)
+- `fee` — management fees (negative)
 
 Balance = `SUM(amount)` — positive means cash available, negative means overdrawn.
 
 Cash is displayed in: `pt portfolio show`, `pt stats summary`, `pt holdings list` (footer), `pt rebalance suggest` (available/remaining), `pt tx buy/sell` (after-trade balance), and the web dashboard.
 
+When adding a buy/sell transaction via `pt tx buy|sell`, the corresponding cash_transaction is created automatically. Same for `pt rebalance execute`.
+
 ## CLI Command Reference
 
 ```bash
-pt portfolio create|list|show|delete    # Portfolio CRUD
-pt holdings add|list|remove             # Holdings management
-pt tx buy|sell|list                     # Record transactions (auto-updates cash)
+pt portfolio create|list|show|delete    # Portfolio CRUD (show includes cash + total value)
+pt holdings add|list|remove             # Holdings management (list shows totals + cash footer)
+pt tx buy|sell|list                     # Record transactions (auto-updates cash, shows balance after)
 pt prices fetch|history                 # Fetch prices via yfinance
-pt stats summary|allocation             # Portfolio stats + German tax calc
-pt rebalance target|check|suggest|execute  # Target allocation + rebalancing
+pt stats summary|allocation             # Portfolio stats + German tax calc (summary includes cash)
+pt rebalance target|check|suggest|execute  # Rebalancing (suggest shows cash impact, execute records cash)
 pt cash balance|history|add             # Cash balance management
 pt dashboard open [--output FILE]       # Open web dashboard in browser
 ```
@@ -129,6 +131,8 @@ pt --help
 python scripts/import_revolut_csv.py
 ```
 
+The import script creates: portfolio + holdings + transactions (buy/dividend) + cash_transactions (top_up/buy/dividend/fee). It's not idempotent — running twice will create duplicates.
+
 ## Conventions
 
 - Language: code and comments in English, user communication in Russian
@@ -136,11 +140,28 @@ python scripts/import_revolut_csv.py
 - All CLI output uses Rich formatting
 - Prices displayed to 4 decimal places, values to 2
 - Holdings sorted by value descending in most views
+- German tax terms in dashboard have English translations in parentheses
+
+## Target Portfolio A (Trade Republic)
+
+Canonical allocation — updated 2026-02-24. Not yet funded (pending Revolut liquidation).
+
+| Ticker | ISIN           | Weight | Threshold | TFS  |
+|--------|----------------|-------:|----------:|------|
+| VWCE   | IE00BK5BQT80   |    70% |        5% | 30%  |
+| VVSM   | IE00BMC38736   |    15% |        3% | 30%  |
+| HEAL   | IE00BYZK4776   |    10% |        3% | 30%  |
+| VAGF   | IE00BG47KH54   |     5% |        3% | 0%   |
+
+All funds are accumulating. Strategy: core (VWCE) + semiconductor satellite (VVSM) + healthcare (HEAL) + bond buffer (VAGF). XAIX was considered and dropped — overlaps with VWCE tech + VVSM.
+
+Stored in `target_allocations` table for portfolio ID 1, keyed by ISIN. See `AGENTS.md` for full rationale and SQL to update.
 
 ## Future Plans
 
-- Trade Republic CSV import
-- Vorabpauschale calculation for accumulating funds
-- Historical performance charts
-- Monthly Sparplan (DCA) tracking
-- REST API (FastAPI) for potential React frontend
+See `PLANS.md` for detailed roadmap. Key priorities:
+1. Trade Republic CSV import (`scripts/import_tr.py`)
+2. Vorabpauschale calculator for accumulating ETFs
+3. Migration workflow (Revolut → TR)
+4. Performance history + time-weighted return
+5. Sparplan (DCA) tracking

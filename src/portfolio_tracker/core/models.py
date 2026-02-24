@@ -45,6 +45,7 @@ class Holding:
     asset_type: AssetType
     shares: Decimal = Decimal("0")
     cost_basis: Decimal = Decimal("0")
+    teilfreistellung_rate: Decimal = Decimal("0")
     id: Optional[int] = None
     name: str = ""  # Human-readable name (e.g. "Apple Inc.")
     ticker: str = ""  # Yahoo Finance ticker for price fetching (e.g. "AAPL")
@@ -77,6 +78,7 @@ class Transaction:
     price: Decimal
     transaction_date: datetime
     notes: str = ""
+    realized_gain: Optional[Decimal] = None
     id: Optional[int] = None
     created_at: Optional[datetime] = None
 
@@ -134,9 +136,23 @@ class CashTransaction:
 
 
 @dataclass
+class TaxLot:
+    """A FIFO tax lot created by a buy transaction."""
+    holding_id: int
+    acquired_date: datetime
+    quantity: Decimal
+    cost_per_unit: Decimal
+    quantity_remaining: Decimal
+    id: Optional[int] = None
+    buy_transaction_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+
+@dataclass
 class TaxInfo:
     """German tax calculation results."""
     gross_gain: Decimal = Decimal("0")
+    teilfreistellung_exempt: Decimal = Decimal("0")
     freistellungsauftrag_used: Decimal = Decimal("0")
     taxable_gain: Decimal = Decimal("0")
     abgeltungssteuer: Decimal = Decimal("0")  # 25%

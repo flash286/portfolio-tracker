@@ -9,14 +9,17 @@ from rich.table import Table
 
 from ...core.exceptions import InsufficientSharesError
 from ...core.models import CashTransactionType, TransactionType
+from ...data.database import get_db
 from ...data.repositories.cash_repo import CashRepository
 from ...data.repositories.holdings_repo import HoldingsRepository
+from ...data.repositories.lots_repo import LotsRepository
 from ...data.repositories.transactions_repo import TransactionsRepository
 
 app = typer.Typer(help="Record transactions")
 console = Console()
 cash_repo = CashRepository()
 holdings_repo = HoldingsRepository()
+lots_repo = LotsRepository()
 tx_repo = TransactionsRepository()
 
 
@@ -58,40 +61,60 @@ def _record_transaction(
             console.print("[red]Invalid date format. Use YYYY-MM-DD[/red]")
             raise typer.Exit(1)
 
-    tx = tx_repo.create(holding_id, tx_type, qty, prc, tx_date, notes)
+    # Pre-compute FIFO matching for SELL (read-only, before transaction)
+    realized_gain = None
+    lots_to_consume = []  # list of (lot_id, consumed_qty)
 
-    # Update holding shares and cost basis
-    if tx_type == TransactionType.BUY:
-        new_shares = h.shares + qty
-        new_cost = h.cost_basis + (qty * prc)
-    else:
-        new_shares = h.shares - qty
-        # Proportional cost basis reduction
-        if h.shares > 0:
-            cost_per_share = h.cost_basis / h.shares
-            new_cost = h.cost_basis - (qty * cost_per_share)
+    if tx_type == TransactionType.SELL:
+        open_lots = lots_repo.get_open_lots_fifo(holding_id)
+        qty_remaining_temp = qty
+        realized_gain = Decimal("0")
+
+        for lot in open_lots:
+            if qty_remaining_temp <= 0:
+                break
+            consumed = min(qty_remaining_temp, lot.quantity_remaining)
+            realized_gain += consumed * (prc - lot.cost_per_unit)
+            lots_to_consume.append((lot.id, consumed))
+            qty_remaining_temp -= consumed
+
+    db = get_db()
+    with db.transaction():
+        tx = tx_repo.create(holding_id, tx_type, qty, prc, tx_date, notes,
+                            realized_gain=realized_gain)
+
+        if tx_type == TransactionType.BUY:
+            lots_repo.create(holding_id, tx_date, qty, prc, buy_transaction_id=tx.id)
+            new_shares = h.shares + qty
+            new_cost = h.cost_basis + (qty * prc)
+        else:  # SELL
+            for lot_id, consumed in lots_to_consume:
+                lots_repo.reduce_lot(lot_id, consumed)
+            new_shares = h.shares - qty
+            new_cost = lots_repo.get_fifo_cost_basis(holding_id)
+
+        holdings_repo.update_shares_and_cost(holding_id, new_shares, new_cost)
+
+        # Record cash impact
+        if tx_type == TransactionType.BUY:
+            cash_repo.create(
+                h.portfolio_id, CashTransactionType.BUY, -(qty * prc), tx_date,
+                description=f"Buy {h.ticker or h.isin}",
+            )
         else:
-            new_cost = Decimal("0")
-
-    holdings_repo.update_shares_and_cost(holding_id, new_shares, new_cost)
-
-    # Record cash impact
-    if tx_type == TransactionType.BUY:
-        cash_repo.create(
-            h.portfolio_id, CashTransactionType.BUY, -(qty * prc), tx_date,
-            description=f"Buy {h.ticker or h.isin}",
-        )
-    elif tx_type == TransactionType.SELL:
-        cash_repo.create(
-            h.portfolio_id, CashTransactionType.SELL, qty * prc, tx_date,
-            description=f"Sell {h.ticker or h.isin}",
-        )
+            cash_repo.create(
+                h.portfolio_id, CashTransactionType.SELL, qty * prc, tx_date,
+                description=f"Sell {h.ticker or h.isin}",
+            )
 
     action = "Bought" if tx_type == TransactionType.BUY else "Sold"
     cash_balance = cash_repo.get_balance(h.portfolio_id)
     console.print(
         f"[green]{action} {qty} × {h.name or h.isin} @ €{prc:,.4f} = €{tx.total_value:,.2f}[/green]"
     )
+    if tx_type == TransactionType.SELL and realized_gain is not None:
+        gain_color = "green" if realized_gain >= 0 else "red"
+        console.print(f"  Realized gain: [{gain_color}]€{realized_gain:,.2f}[/{gain_color}] (FIFO)")
     console.print(f"  Cash balance: €{cash_balance:,.2f}")
 
 

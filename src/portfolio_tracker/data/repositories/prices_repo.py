@@ -15,9 +15,10 @@ class PricesRepository:
         cursor = db.conn.execute(
             """INSERT INTO price_history (holding_id, price, fetch_date, source)
                VALUES (?, ?, ?, ?)""",
-            (holding_id, float(price), now.isoformat(), source),
+            (holding_id, str(price), now.isoformat(), source),
         )
-        db.conn.commit()
+        if not db._in_transaction:
+            db.conn.commit()
         return PricePoint(
             id=cursor.lastrowid,
             holding_id=holding_id,

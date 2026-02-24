@@ -14,7 +14,8 @@ class PortfoliosRepository:
             "INSERT INTO portfolios (name, description) VALUES (?, ?)",
             (name, description),
         )
-        db.conn.commit()
+        if not db._in_transaction:
+            db.conn.commit()
         return self.get_by_id(cursor.lastrowid)
 
     def get_by_id(self, portfolio_id: int) -> Optional[Portfolio]:
@@ -47,7 +48,8 @@ class PortfoliosRepository:
         cursor = db.conn.execute(
             "DELETE FROM portfolios WHERE id = ?", (portfolio_id,)
         )
-        db.conn.commit()
+        if not db._in_transaction:
+            db.conn.commit()
         return cursor.rowcount > 0
 
     @staticmethod

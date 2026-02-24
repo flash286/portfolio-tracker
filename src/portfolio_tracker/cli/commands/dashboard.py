@@ -38,6 +38,49 @@ def _get_cash_balance(portfolio_id: int) -> Decimal:
     return cash_repo.get_balance(portfolio_id)
 
 
+def _collect_realized(portfolio_id: int, holding_by_id: dict, calc) -> dict:
+    """Collect current-year realized gains from sell transactions."""
+    tx_repo = TransactionsRepository()
+    current_year = datetime.now().year
+    sells = tx_repo.list_sells_by_portfolio_year(portfolio_id, current_year)
+
+    sell_rows = []
+    realized_total_gain = Decimal("0")
+    realized_tfs_exempt = Decimal("0")
+
+    for sell in sells:
+        h = holding_by_id.get(sell.holding_id)
+        tfs_rate = h.teilfreistellung_rate if h else Decimal("0")
+        gain = sell.realized_gain if sell.realized_gain is not None else Decimal("0")
+        gain_exempt = (gain * tfs_rate).quantize(Decimal("0.01")) if gain > 0 else Decimal("0")
+        realized_total_gain += gain
+        realized_tfs_exempt += gain_exempt
+        sell_rows.append({
+            "date": sell.transaction_date.strftime("%Y-%m-%d"),
+            "ticker": (h.ticker or h.name or h.isin[:8]) if h else "?",
+            "quantity": sell.quantity,
+            "price": sell.price,
+            "realized_gain": gain,
+            "tfs_rate": float(tfs_rate),
+        })
+
+    realized_taxable = realized_total_gain - realized_tfs_exempt
+    realized_tax_info = calc.calculate_german_tax(max(realized_taxable, Decimal("0")))
+
+    return {
+        "year": current_year,
+        "sell_count": len(sells),
+        "total_gain": realized_total_gain,
+        "tfs_exempt": realized_tfs_exempt,
+        "taxable": realized_taxable,
+        "fsa_used": realized_tax_info.freistellungsauftrag_used,
+        "taxable_after_fsa": realized_tax_info.taxable_gain,
+        "total_tax": realized_tax_info.total_tax,
+        "net_gain": realized_tax_info.net_gain,
+        "sells": sell_rows,
+    }
+
+
 def _collect_data(portfolio_id: int) -> dict:
     """Collect all portfolio data into a JSON-serializable dict."""
     portfolios_repo = PortfoliosRepository()
@@ -66,7 +109,18 @@ def _collect_data(portfolio_id: int) -> dict:
 
     alloc_by_type = calc.allocation_by_type(holdings)
     alloc_by_isin = calc.allocation_by_isin(holdings)
-    tax_info = calc.calculate_german_tax(total_pnl)
+
+    # Weighted TFS rate across all holdings (by value weight)
+    weighted_tfs = Decimal("0")
+    if total_value > 0:
+        weighted_tfs = sum(
+            (h.current_value / total_value * h.teilfreistellung_rate)
+            for h in holdings if h.current_price is not None
+        )
+    tax_info = calc.calculate_german_tax(
+        max(total_pnl, Decimal("0")),
+        teilfreistellung_rate=weighted_tfs,
+    )
 
     # Targets & rebalancing
     targets = targets_repo.list_by_portfolio(portfolio_id)
@@ -86,6 +140,9 @@ def _collect_data(portfolio_id: int) -> dict:
     # Cash balance from the database
     cash_balance = _get_cash_balance(portfolio_id)
 
+    # Holdings lookup by id (for realized gains section)
+    holding_by_id = {h.id: h for h in holdings}
+
     # Holdings detail
     holdings_data = []
     for h in holdings:
@@ -95,6 +152,7 @@ def _collect_data(portfolio_id: int) -> dict:
             "name": h.name,
             "ticker": h.ticker,
             "asset_type": h.asset_type.value,
+            "tfs_rate": float(h.teilfreistellung_rate),
             "shares": h.shares,
             "cost_basis": h.cost_basis,
             "current_price": h.current_price,
@@ -149,6 +207,8 @@ def _collect_data(portfolio_id: int) -> dict:
         },
         "tax": {
             "gross_gain": tax_info.gross_gain,
+            "tfs_exempt": tax_info.teilfreistellung_exempt,
+            "tfs_rate_pct": float(weighted_tfs * 100),
             "freistellungsauftrag_used": tax_info.freistellungsauftrag_used,
             "taxable_gain": tax_info.taxable_gain,
             "abgeltungssteuer": tax_info.abgeltungssteuer,
@@ -159,6 +219,7 @@ def _collect_data(portfolio_id: int) -> dict:
         "allocation_by_type": {k: v for k, v in alloc_by_type.items()},
         "holdings": holdings_data,
         "deviations": deviation_data,
+        "realized": _collect_realized(portfolio_id, holding_by_id, calc),
     }
 
 
@@ -213,6 +274,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .dev-badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-left: 4px; }
   .dev-badge.ok { background: rgba(34,197,94,0.15); color: var(--green); }
   .dev-badge.warn { background: rgba(239,68,68,0.15); color: var(--red); }
+  .dev-badge.under { background: rgba(59,130,246,0.15); color: var(--blue); }
   .tax-grid { display: grid; grid-template-columns: 1fr; gap: 0; }
   .tax-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); }
   .tax-item:last-child { border-bottom: none; }
@@ -222,6 +284,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .tax-item.highlight .tl { color: var(--text); font-size: 15px; font-weight: 600; }
   .tax-item.highlight .tv { font-size: 20px; }
   .tooltip { position: absolute; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 12px; pointer-events: none; opacity: 0; transition: opacity 0.15s; white-space: nowrap; z-index: 10; }
+  .tfs-badge { color: var(--amber); font-size: 12px; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -326,6 +389,109 @@ function donut(container, items, cx, cy, outerR, innerR) {
   container.insertBefore(svg, tooltip);
 }
 
+function generateMarkdown() {
+  const s = D.summary;
+  const t = D.tax;
+  const r = D.realized;
+  const dateStr = new Date(D.generated_at).toLocaleDateString('de-DE', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  const fmtN = (n, d=2) => Number(n).toFixed(d);
+  const sign = n => Number(n) >= 0 ? '+' : '';
+  const lines = [];
+
+  lines.push(`# Portfolio: ${D.portfolio_name}`);
+  lines.push(`Generated: ${dateStr}\n`);
+
+  // Summary
+  lines.push('## Summary\n');
+  lines.push('| Metric | Value |');
+  lines.push('|--------|-------|');
+  lines.push(`| Total Value | €${fmtN(s.total_value)} |`);
+  lines.push(`| Holdings Value | €${fmtN(s.holdings_value)} |`);
+  lines.push(`| Cash Balance | €${fmtN(s.cash_balance)} |`);
+  lines.push(`| Total Invested | €${fmtN(s.total_cost)} |`);
+  lines.push(`| Unrealized P&L | €${fmtN(s.total_pnl)} (${sign(s.pnl_pct)}${fmtN(s.pnl_pct)}%) |`);
+  lines.push(`| Dividends Received | €${fmtN(s.total_dividends)} |`);
+  lines.push(`| Holdings Count | ${s.holdings_count} |`);
+  lines.push('');
+
+  // Holdings
+  lines.push('## Holdings\n');
+  lines.push('| Ticker | Name | Type | TFS% | Shares | Cost € | Price € | Value € | P&L € | P&L % | Weight |');
+  lines.push('|--------|------|------|------|-------:|-------:|--------:|--------:|------:|------:|-------:|');
+  for (const h of D.holdings) {
+    const tfs = h.tfs_rate > 0 ? (h.tfs_rate*100).toFixed(0)+'%' : '—';
+    const price = h.current_price ? fmtN(h.current_price, 4) : '—';
+    lines.push(`| ${h.ticker||'—'} | ${h.name||h.isin} | ${h.asset_type} | ${tfs} | ${fmtN(h.shares,4)} | ${fmtN(h.cost_basis)} | ${price} | ${fmtN(h.current_value)} | ${sign(h.pnl)}${fmtN(h.pnl)} | ${sign(h.pnl_pct)}${fmtN(h.pnl_pct)}% | ${fmtN(h.weight,1)}% |`);
+  }
+  lines.push('');
+
+  // Tax estimate
+  lines.push('## Tax Estimate (Germany, hypothetical)\n');
+  lines.push('| Item | Amount |');
+  lines.push('|------|-------:|');
+  lines.push(`| Unrealized Gain | €${fmtN(t.gross_gain)} |`);
+  if (Number(t.tfs_exempt) > 0) {
+    lines.push(`| Teilfreistellung ~${fmtN(t.tfs_rate_pct,1)}% (partial exemption) | −€${fmtN(t.tfs_exempt)} |`);
+  }
+  lines.push(`| Freistellungsauftrag used | −€${fmtN(t.freistellungsauftrag_used)} |`);
+  lines.push(`| Taxable Gain | €${fmtN(t.taxable_gain)} |`);
+  lines.push(`| Abgeltungssteuer 25% | €${fmtN(t.abgeltungssteuer)} |`);
+  lines.push(`| Solidaritätszuschlag 5.5% | €${fmtN(t.soli)} |`);
+  lines.push(`| **Total Tax** | **€${fmtN(t.total_tax)}** |`);
+  lines.push(`| **Net Gain after Tax** | **€${fmtN(t.net_gain)}** |`);
+  lines.push('');
+
+  // Target vs Actual
+  const devs = D.deviations.filter(d => Number(d.target) > 0 || Number(d.current) > 0);
+  if (devs.length) {
+    lines.push('## Target vs Actual Allocation\n');
+    lines.push('| Asset | Current | Target | Deviation | Status |');
+    lines.push('|-------|--------:|-------:|----------:|--------|');
+    for (const d of devs) {
+      const dev = Number(d.deviation);
+      const status = !d.needs_rebalance ? '✅ OK' : dev > 0 ? '🔴 Overweight' : '🔵 Underweight';
+      const devStr = (dev > 0 ? '+' : '') + fmtN(d.deviation, 1) + '%';
+      lines.push(`| ${d.name} | ${fmtN(d.current,1)}% | ${fmtN(d.target,1)}% | ${devStr} | ${status} |`);
+    }
+    lines.push('');
+  }
+
+  // Realized gains
+  if (r.sell_count > 0) {
+    lines.push(`## Realized Gains (${r.year})\n`);
+    lines.push('| Item | Amount |');
+    lines.push('|------|-------:|');
+    lines.push(`| Total Realized Gain | €${fmtN(r.total_gain)} |`);
+    lines.push(`| TFS Exempt | −€${fmtN(r.tfs_exempt)} |`);
+    lines.push(`| Taxable | €${fmtN(r.taxable)} |`);
+    lines.push(`| Freistellungsauftrag used | −€${fmtN(r.fsa_used)} |`);
+    lines.push(`| Est. Total Tax | €${fmtN(r.total_tax)} |`);
+    lines.push(`| **Net Gain** | **€${fmtN(r.net_gain)}** |`);
+    lines.push('');
+    lines.push('| Date | Ticker | Qty | Sell Price € | Realized Gain € | TFS% | Taxable € |');
+    lines.push('|------|--------|----:|-------------:|----------------:|-----:|----------:|');
+    for (const sell of r.sells) {
+      const taxable = sell.realized_gain > 0 ? sell.realized_gain * (1 - sell.tfs_rate) : sell.realized_gain;
+      const tfs = sell.tfs_rate > 0 ? (sell.tfs_rate*100).toFixed(0)+'%' : '—';
+      lines.push(`| ${sell.date} | ${sell.ticker} | ${fmtN(sell.quantity,4)} | ${fmtN(sell.price,4)} | ${sign(sell.realized_gain)}${fmtN(sell.realized_gain)} | ${tfs} | ${sign(taxable)}${fmtN(taxable)} |`);
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+function copyMarkdown() {
+  const md = generateMarkdown();
+  navigator.clipboard.writeText(md).then(() => {
+    const btn = document.getElementById('md-btn');
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    btn.style.color = 'var(--green)';
+    setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 2000);
+  });
+}
+
 function render() {
   const app = document.getElementById('app');
   const s = D.summary;
@@ -335,7 +501,10 @@ function render() {
   app.innerHTML = `
     <div class="header">
       <h1>${D.portfolio_name}</h1>
-      <span class="date">${dateStr}</span>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span class="date">${dateStr}</span>
+        <button id="md-btn" onclick="copyMarkdown()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:8px;font-size:13px;cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='var(--surface2)'">Copy as Markdown</button>
+      </div>
     </div>
 
     <div class="kpi-grid">
@@ -357,7 +526,7 @@ function render() {
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>Ticker</th><th>Name</th><th>Type</th>
+            <th>Ticker</th><th>Name</th><th>Type</th><th class="num">TFS%</th>
             <th class="num">Shares</th><th class="num">Cost&nbsp;€</th>
             <th class="num">Price&nbsp;€</th><th class="num">Value&nbsp;€</th>
             <th class="num">P&amp;L&nbsp;€</th><th class="num">P&amp;L&nbsp;%</th>
@@ -366,10 +535,12 @@ function render() {
           <tbody>
             ${D.holdings.map(h => {
               const pc = Number(h.pnl) >= 0 ? 'positive' : 'negative';
+              const tfsCell = h.tfs_rate > 0 ? `<span class="tfs-badge">${(h.tfs_rate*100).toFixed(0)}%</span>` : '—';
               return `<tr>
                 <td style="font-weight:600">${h.ticker||'—'}</td>
                 <td style="color:var(--text2);font-size:13px">${h.name||h.isin}</td>
                 <td>${h.asset_type}</td>
+                <td class="num">${tfsCell}</td>
                 <td class="num">${fmt(h.shares,4)}</td>
                 <td class="num">${fmt(h.cost_basis)}</td>
                 <td class="num">${h.current_price?fmt(h.current_price,4):'—'}</td>
@@ -383,6 +554,8 @@ function render() {
         </table>
       </div>
     </div>
+
+    <div id="realized-section"></div>
 
     <div class="charts-row">
       <div class="card">
@@ -419,9 +592,10 @@ function render() {
   } else {
     const maxPct = Math.max(...devs.map(d => Math.max(Number(d.current), Number(d.target))), 1);
     devEl.innerHTML = devs.map(d => {
-      const badgeCls = d.needs_rebalance ? 'warn' : 'ok';
+      const dev = Number(d.deviation);
+      const badgeCls = !d.needs_rebalance ? 'ok' : dev > 0 ? 'warn' : 'under';
       const badgeText = d.needs_rebalance
-        ? (Number(d.deviation)>0?'+':'') + fmt(d.deviation,1) + '%'
+        ? (dev>0?'+':'') + fmt(d.deviation,1) + '%'
         : 'OK';
       return `<div class="dev-row">
         <div class="dev-label">${d.name}</div>
@@ -444,8 +618,12 @@ function render() {
   const t = D.tax;
   const taxEl = document.getElementById('tax');
   const netCls = Number(t.net_gain) >= 0 ? 'positive' : 'negative';
+  const tfsRow = Number(t.tfs_exempt) > 0
+    ? `<div class="tax-item"><span class="tl">Teilfreistellung ~${fmt(t.tfs_rate_pct,1)}% <span style="opacity:0.5;font-size:11px">(partial exemption)</span></span><span class="tv positive">-${fmt(t.tfs_exempt)} €</span></div>`
+    : '';
   taxEl.innerHTML = `<div class="tax-grid">
-    <div class="tax-item"><span class="tl">Unrealized Gain</span><span class="tv">${fmt(t.gross_gain)} €</span></div>
+    <div class="tax-item"><span class="tl">Unrealized Gain <span style="opacity:0.5;font-size:11px">(hypothetical)</span></span><span class="tv">${fmt(t.gross_gain)} €</span></div>
+    ${tfsRow}
     <div class="tax-item"><span class="tl">Freistellungsauftrag <span style="opacity:0.5;font-size:11px">(tax-free allowance)</span></span><span class="tv positive">-${fmt(t.freistellungsauftrag_used)} €</span></div>
     <div class="tax-item"><span class="tl">Taxable Gain</span><span class="tv">${fmt(t.taxable_gain)} €</span></div>
     <div class="tax-item"><span class="tl">Abgeltungssteuer 25% <span style="opacity:0.5;font-size:11px">(flat capital gains tax)</span></span><span class="tv">${fmt(t.abgeltungssteuer)} €</span></div>
@@ -453,6 +631,46 @@ function render() {
     <div class="tax-item"><span class="tl">Total Tax</span><span class="tv negative">${fmt(t.total_tax)} €</span></div>
     <div class="tax-item highlight"><span class="tl">Net Gain after Tax</span><span class="tv ${netCls}">${fmt(t.net_gain)} €</span></div>
   </div>`;
+
+  // Realized Gains section
+  const r = D.realized;
+  const realizedEl = document.getElementById('realized-section');
+  if (r.sell_count > 0) {
+    const gainCls = n => Number(n) >= 0 ? 'positive' : 'negative';
+    const sellRows = r.sells.map(s => {
+      const taxable = s.realized_gain > 0 ? s.realized_gain * (1 - s.tfs_rate) : s.realized_gain;
+      return `<tr>
+        <td>${s.date}</td>
+        <td style="font-weight:600">${s.ticker}</td>
+        <td class="num">${fmt(s.quantity,4)}</td>
+        <td class="num">${fmt(s.price,4)}</td>
+        <td class="num ${gainCls(s.realized_gain)}">${fmt(s.realized_gain)}</td>
+        <td class="num">${s.tfs_rate > 0 ? '<span class="tfs-badge">' + (s.tfs_rate*100).toFixed(0) + '%</span>' : '—'}</td>
+        <td class="num ${gainCls(taxable)}">${fmt(taxable)}</td>
+      </tr>`;
+    }).join('');
+    realizedEl.innerHTML = `<div class="card" style="margin-bottom:32px">
+      <h2>Realized Gains (${r.year})</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;margin-bottom:20px">
+        <div class="kpi" style="padding:16px"><div class="label">Total Gain</div><div class="value ${gainCls(r.total_gain)}" style="font-size:20px">${fmt(r.total_gain)} €</div></div>
+        <div class="kpi" style="padding:16px"><div class="label">TFS Exempt</div><div class="value positive" style="font-size:20px">-${fmt(r.tfs_exempt)} €</div></div>
+        <div class="kpi" style="padding:16px"><div class="label">Taxable</div><div class="value" style="font-size:20px">${fmt(r.taxable)} €</div></div>
+        <div class="kpi" style="padding:16px"><div class="label">Est. Tax</div><div class="value negative" style="font-size:20px">${fmt(r.total_tax)} €</div></div>
+        <div class="kpi" style="padding:16px"><div class="label">Net Gain</div><div class="value ${gainCls(r.net_gain)}" style="font-size:20px">${fmt(r.net_gain)} €</div></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Date</th><th>Ticker</th>
+            <th class="num">Qty</th><th class="num">Sell Price&nbsp;€</th>
+            <th class="num">Realized Gain&nbsp;€</th><th class="num">TFS%</th>
+            <th class="num">Taxable&nbsp;€</th>
+          </tr></thead>
+          <tbody>${sellRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }
 }
 
 render();

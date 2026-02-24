@@ -19,9 +19,10 @@ class TargetsRepository:
                  target_percentage = excluded.target_percentage,
                  rebalance_threshold = excluded.rebalance_threshold,
                  updated_at = CURRENT_TIMESTAMP""",
-            (portfolio_id, asset_type, float(target_pct), float(threshold)),
+            (portfolio_id, asset_type, str(target_pct), str(threshold)),
         )
-        db.conn.commit()
+        if not db._in_transaction:
+            db.conn.commit()
         return self.get(portfolio_id, asset_type)
 
     def get(self, portfolio_id: int, asset_type: str) -> Optional[TargetAllocation]:
@@ -48,7 +49,8 @@ class TargetsRepository:
             "DELETE FROM target_allocations WHERE portfolio_id = ? AND asset_type = ?",
             (portfolio_id, asset_type),
         )
-        db.conn.commit()
+        if not db._in_transaction:
+            db.conn.commit()
         return cursor.rowcount > 0
 
     @staticmethod

@@ -62,12 +62,14 @@ class PortfolioCalculator:
     def calculate_german_tax(
         realized_gain: Decimal,
         freistellungsauftrag: Decimal = DEFAULT_FREISTELLUNGSAUFTRAG,
+        teilfreistellung_rate: Decimal = Decimal("0"),
     ) -> TaxInfo:
         """
         Calculate German capital gains tax (Abgeltungssteuer).
         - 25% flat tax on gains
         - 5.5% Solidaritätszuschlag on the tax
         - Freistellungsauftrag: €1,000 (single) / €2,000 (married) tax-free
+        - Teilfreistellung: 30% exemption for equity ETFs (§ 20 InvStG)
         - No Kirchensteuer (user not a church member)
         """
         info = TaxInfo(gross_gain=realized_gain)
@@ -76,9 +78,15 @@ class PortfolioCalculator:
             info.net_gain = realized_gain
             return info
 
-        # Apply Freistellungsauftrag
-        info.freistellungsauftrag_used = min(realized_gain, freistellungsauftrag)
-        info.taxable_gain = max(realized_gain - freistellungsauftrag, Decimal("0"))
+        # Apply Teilfreistellung first (reduces taxable base)
+        info.teilfreistellung_exempt = (
+            realized_gain * teilfreistellung_rate
+        ).quantize(Decimal("0.01"))
+        taxable_after_tfs = realized_gain - info.teilfreistellung_exempt
+
+        # Apply Freistellungsauftrag to TFS-reduced base
+        info.freistellungsauftrag_used = min(taxable_after_tfs, freistellungsauftrag)
+        info.taxable_gain = max(taxable_after_tfs - freistellungsauftrag, Decimal("0"))
 
         if info.taxable_gain > 0:
             info.abgeltungssteuer = (

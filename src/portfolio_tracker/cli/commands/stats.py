@@ -49,8 +49,20 @@ def summary(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
     pnl = PortfolioCalculator.total_unrealized_pnl(holdings)
     pnl_pct = (pnl / total_cost * 100).quantize(Decimal("0.01")) if total_cost > 0 else Decimal("0")
 
-    # Tax estimate (no Kirchensteuer)
-    tax_info = PortfolioCalculator.calculate_german_tax(max(pnl, Decimal("0")))
+    # Weighted Teilfreistellung rate (weighted by current value)
+    weighted_tfs = Decimal("0")
+    if total_val > 0:
+        weighted_tfs = sum(
+            (h.current_value / total_val * h.teilfreistellung_rate)
+            for h in holdings
+            if h.current_price is not None
+        )
+
+    # Tax estimate (no Kirchensteuer), with Teilfreistellung
+    tax_info = PortfolioCalculator.calculate_german_tax(
+        max(pnl, Decimal("0")),
+        teilfreistellung_rate=weighted_tfs,
+    )
 
     console.print(f"\n[bold]Portfolio: {p.name}[/bold]\n")
 
@@ -73,6 +85,9 @@ def summary(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
     if pnl > 0:
         table.add_row("", "")
         table.add_row("[dim]— Steuerberechnung (DE) —[/dim]", "")
+        if tax_info.teilfreistellung_exempt > 0:
+            tfs_pct = f"{weighted_tfs * 100:.0f}%"
+            table.add_row(f"Teilfreistellung ({tfs_pct})", f"[dim]−€{tax_info.teilfreistellung_exempt:,.2f}[/dim]")
         table.add_row("Freistellungsauftrag genutzt", f"€{tax_info.freistellungsauftrag_used:,.2f}")
         table.add_row("Steuerpflichtiger Gewinn", f"€{tax_info.taxable_gain:,.2f}")
         table.add_row("Abgeltungssteuer (25%)", f"€{tax_info.abgeltungssteuer:,.2f}")

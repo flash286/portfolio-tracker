@@ -9,8 +9,10 @@ from rich.table import Table
 
 from ...core.models import AssetType, CashTransactionType, TransactionType
 from ...core.rebalancer import Rebalancer
+from ...data.database import get_db
 from ...data.repositories.cash_repo import CashRepository
 from ...data.repositories.holdings_repo import HoldingsRepository
+from ...data.repositories.lots_repo import LotsRepository
 from ...data.repositories.portfolios_repo import PortfoliosRepository
 from ...data.repositories.prices_repo import PricesRepository
 from ...data.repositories.targets_repo import TargetsRepository
@@ -20,6 +22,7 @@ app = typer.Typer(help="Rebalancing")
 console = Console()
 cash_repo = CashRepository()
 holdings_repo = HoldingsRepository()
+lots_repo = LotsRepository()
 portfolios_repo = PortfoliosRepository()
 prices_repo = PricesRepository()
 targets_repo = TargetsRepository()
@@ -244,34 +247,54 @@ def execute(
             console.print("Cancelled.")
             return
 
-    # Record transactions
+    # Record transactions atomically
+    db = get_db()
     now = datetime.now()
-    for t in trades:
-        h = next((h for h in holdings if h.isin == t.isin), None)
-        if not h:
-            continue
+    with db.transaction():
+        for t in trades:
+            h = next((h for h in holdings if h.isin == t.isin), None)
+            if not h:
+                continue
 
-        tx_repo.create(h.id, t.action, t.shares, t.current_price, now, f"Rebalance: {t.reason}")
+            if t.action == TransactionType.BUY:
+                tx = tx_repo.create(h.id, t.action, t.shares, t.current_price, now,
+                                    f"Rebalance: {t.reason}")
+                lots_repo.create(h.id, now, t.shares, t.current_price,
+                                 buy_transaction_id=tx.id)
+                new_shares = h.shares + t.shares
+                new_cost = h.cost_basis + t.trade_value
+                cash_repo.create(
+                    portfolio_id, CashTransactionType.BUY, -t.trade_value, now,
+                    description=f"Rebalance: Buy {t.ticker or t.isin}",
+                )
+            else:  # SELL — FIFO matching
+                open_lots = lots_repo.get_open_lots_fifo(h.id)
+                qty_remaining_temp = t.shares
+                realized_gain = Decimal("0")
+                lots_to_consume = []
 
-        if t.action == TransactionType.BUY:
-            new_shares = h.shares + t.shares
-            new_cost = h.cost_basis + t.trade_value
-            # Cash outflow
-            cash_repo.create(
-                portfolio_id, CashTransactionType.BUY, -t.trade_value, now,
-                description=f"Rebalance: Buy {t.ticker or t.isin}",
-            )
-        else:
-            new_shares = h.shares - t.shares
-            cost_per_share = h.cost_basis / h.shares if h.shares > 0 else Decimal("0")
-            new_cost = h.cost_basis - (t.shares * cost_per_share)
-            # Cash inflow
-            cash_repo.create(
-                portfolio_id, CashTransactionType.SELL, t.trade_value, now,
-                description=f"Rebalance: Sell {t.ticker or t.isin}",
-            )
+                for lot in open_lots:
+                    if qty_remaining_temp <= 0:
+                        break
+                    consumed = min(qty_remaining_temp, lot.quantity_remaining)
+                    realized_gain += consumed * (t.current_price - lot.cost_per_unit)
+                    lots_to_consume.append((lot.id, consumed))
+                    qty_remaining_temp -= consumed
 
-        holdings_repo.update_shares_and_cost(h.id, new_shares, new_cost)
+                tx_repo.create(h.id, t.action, t.shares, t.current_price, now,
+                               f"Rebalance: {t.reason}", realized_gain=realized_gain)
+
+                for lot_id, consumed in lots_to_consume:
+                    lots_repo.reduce_lot(lot_id, consumed)
+
+                new_shares = h.shares - t.shares
+                new_cost = lots_repo.get_fifo_cost_basis(h.id)
+                cash_repo.create(
+                    portfolio_id, CashTransactionType.SELL, t.trade_value, now,
+                    description=f"Rebalance: Sell {t.ticker or t.isin}",
+                )
+
+            holdings_repo.update_shares_and_cost(h.id, new_shares, new_cost)
 
     new_balance = cash_repo.get_balance(portfolio_id)
     console.print(f"\n[green]Executed {len(trades)} rebalancing trades.[/green]")

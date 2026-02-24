@@ -17,24 +17,28 @@ class TransactionsRepository:
         price: Decimal,
         transaction_date: datetime,
         notes: str = "",
+        realized_gain: Optional[Decimal] = None,
     ) -> Transaction:
         db = get_db()
-        total_value = float(quantity * price)
+        total_value = str(quantity * price)
         cursor = db.conn.execute(
             """INSERT INTO transactions
-               (holding_id, transaction_type, quantity, price, total_value, transaction_date, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (holding_id, transaction_type, quantity, price, total_value, realized_gain,
+                transaction_date, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 holding_id,
                 transaction_type.value,
-                float(quantity),
-                float(price),
+                str(quantity),
+                str(price),
                 total_value,
+                str(realized_gain) if realized_gain is not None else None,
                 transaction_date.isoformat(),
                 notes,
             ),
         )
-        db.conn.commit()
+        if not db._in_transaction:
+            db.conn.commit()
         return self.get_by_id(cursor.lastrowid)
 
     def get_by_id(self, tx_id: int) -> Optional[Transaction]:
@@ -65,14 +69,29 @@ class TransactionsRepository:
         ).fetchall()
         return [self._row_to_tx(r) for r in rows]
 
+    def list_sells_by_portfolio_year(self, portfolio_id: int, year: int) -> list[Transaction]:
+        db = get_db()
+        rows = db.conn.execute(
+            """SELECT t.* FROM transactions t
+               JOIN holdings h ON t.holding_id = h.id
+               WHERE h.portfolio_id = ?
+                 AND t.transaction_type = 'sell'
+                 AND strftime('%Y', t.transaction_date) = ?
+               ORDER BY t.transaction_date""",
+            (portfolio_id, str(year)),
+        ).fetchall()
+        return [self._row_to_tx(r) for r in rows]
+
     def delete(self, tx_id: int) -> bool:
         db = get_db()
         cursor = db.conn.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
-        db.conn.commit()
+        if not db._in_transaction:
+            db.conn.commit()
         return cursor.rowcount > 0
 
     @staticmethod
     def _row_to_tx(row) -> Transaction:
+        rg = row["realized_gain"]
         return Transaction(
             id=row["id"],
             holding_id=row["holding_id"],
@@ -81,5 +100,6 @@ class TransactionsRepository:
             price=Decimal(str(row["price"])),
             transaction_date=datetime.fromisoformat(row["transaction_date"]),
             notes=row["notes"] or "",
+            realized_gain=Decimal(str(rg)) if rg is not None else None,
             created_at=row["created_at"],
         )

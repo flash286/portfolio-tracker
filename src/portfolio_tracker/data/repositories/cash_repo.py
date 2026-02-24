@@ -25,12 +25,13 @@ class CashRepository:
             (
                 portfolio_id,
                 cash_type.value,
-                float(amount),
+                str(amount),
                 transaction_date.isoformat(),
                 description,
             ),
         )
-        db.conn.commit()
+        if not db._in_transaction:
+            db.conn.commit()
         return self.get_by_id(cursor.lastrowid)
 
     def get_by_id(self, tx_id: int) -> Optional[CashTransaction]:
@@ -62,7 +63,8 @@ class CashRepository:
     def delete(self, tx_id: int) -> bool:
         db = get_db()
         cursor = db.conn.execute("DELETE FROM cash_transactions WHERE id = ?", (tx_id,))
-        db.conn.commit()
+        if not db._in_transaction:
+            db.conn.commit()
         return cursor.rowcount > 0
 
     def delete_by_portfolio(self, portfolio_id: int) -> int:
@@ -71,7 +73,8 @@ class CashRepository:
         cursor = db.conn.execute(
             "DELETE FROM cash_transactions WHERE portfolio_id = ?", (portfolio_id,)
         )
-        db.conn.commit()
+        if not db._in_transaction:
+            db.conn.commit()
         return cursor.rowcount
 
     @staticmethod

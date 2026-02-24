@@ -1,7 +1,7 @@
 """Cash balance management commands."""
 
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 import typer
 from rich.console import Console
@@ -70,7 +70,7 @@ def history(
 @app.command("add")
 def add(
     portfolio_id: int = typer.Argument(..., help="Portfolio ID"),
-    amount: float = typer.Argument(..., help="Amount in EUR (positive = deposit, negative = withdrawal)"),
+    amount: str = typer.Argument(..., help="Amount in EUR (positive = deposit, negative = withdrawal)"),
     description: str = typer.Option("", "--desc", "-d", help="Description"),
     cash_type: str = typer.Option("top_up", "--type", "-t", help="Type: top_up, withdrawal, fee"),
 ):
@@ -81,15 +81,21 @@ def add(
         raise typer.Exit(1)
 
     try:
+        decimal_amount = Decimal(amount)
+    except InvalidOperation:
+        console.print("[red]Invalid amount format[/red]")
+        raise typer.Exit(1)
+
+    try:
         ct = CashTransactionType(cash_type)
     except ValueError:
         valid = ", ".join(t.value for t in CashTransactionType)
         console.print(f"[red]Invalid type '{cash_type}'. Valid: {valid}[/red]")
         raise typer.Exit(1)
 
-    tx = cash_repo.create(
-        portfolio_id, ct, Decimal(str(amount)), datetime.now(), description=description,
+    cash_repo.create(
+        portfolio_id, ct, decimal_amount, datetime.now(), description=description,
     )
     bal = cash_repo.get_balance(portfolio_id)
-    console.print(f"[green]✓[/green] Added {ct.value} of €{amount:,.2f}")
+    console.print(f"[green]✓[/green] Added {ct.value} of €{decimal_amount:,.2f}")
     console.print(f"  New balance: [bold green]€{bal:,.2f}[/bold green]")

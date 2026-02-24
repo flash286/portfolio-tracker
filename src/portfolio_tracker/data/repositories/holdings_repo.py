@@ -15,13 +15,18 @@ class HoldingsRepository:
         asset_type: AssetType,
         name: str = "",
         ticker: str = "",
+        teilfreistellung_rate: Decimal = Decimal("0"),
     ) -> Holding:
         db = get_db()
         cursor = db.conn.execute(
-            "INSERT INTO holdings (portfolio_id, isin, asset_type, name, ticker, shares, cost_basis) VALUES (?, ?, ?, ?, ?, 0, 0)",
-            (portfolio_id, isin.upper(), asset_type.value, name, ticker.upper()),
+            """INSERT INTO holdings
+               (portfolio_id, isin, asset_type, name, ticker, shares, cost_basis, teilfreistellung_rate)
+               VALUES (?, ?, ?, ?, ?, '0', '0', ?)""",
+            (portfolio_id, isin.upper(), asset_type.value, name, ticker.upper(),
+             str(teilfreistellung_rate)),
         )
-        db.conn.commit()
+        if not db._in_transaction:
+            db.conn.commit()
         return self.get_by_id(cursor.lastrowid)
 
     def get_by_id(self, holding_id: int) -> Optional[Holding]:
@@ -55,14 +60,25 @@ class HoldingsRepository:
         db = get_db()
         db.conn.execute(
             "UPDATE holdings SET shares = ?, cost_basis = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (float(shares), float(cost_basis), holding_id),
+            (str(shares), str(cost_basis), holding_id),
         )
-        db.conn.commit()
+        if not db._in_transaction:
+            db.conn.commit()
+
+    def update_teilfreistellung_rate(self, holding_id: int, rate: Decimal):
+        db = get_db()
+        db.conn.execute(
+            "UPDATE holdings SET teilfreistellung_rate = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (str(rate), holding_id),
+        )
+        if not db._in_transaction:
+            db.conn.commit()
 
     def delete(self, holding_id: int) -> bool:
         db = get_db()
         cursor = db.conn.execute("DELETE FROM holdings WHERE id = ?", (holding_id,))
-        db.conn.commit()
+        if not db._in_transaction:
+            db.conn.commit()
         return cursor.rowcount > 0
 
     @staticmethod
@@ -76,6 +92,7 @@ class HoldingsRepository:
             ticker=row["ticker"] or "",
             shares=Decimal(str(row["shares"])),
             cost_basis=Decimal(str(row["cost_basis"])),
+            teilfreistellung_rate=Decimal(str(row["teilfreistellung_rate"])),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

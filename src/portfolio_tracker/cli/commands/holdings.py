@@ -1,5 +1,7 @@
 """Holdings management commands."""
 
+from decimal import Decimal, InvalidOperation
+
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -36,6 +38,7 @@ def add(
     asset_type: str = typer.Argument(..., help=f"Asset type: {', '.join(ASSET_TYPES)}"),
     name: str = typer.Option("", "--name", "-n", help="Human-readable name (e.g. 'Apple Inc.')"),
     ticker: str = typer.Option("", "--ticker", "-t", help="Yahoo Finance ticker for price fetching (e.g. 'AAPL')"),
+    tfs_rate: str = typer.Option("0", "--tfs-rate", help="Teilfreistellung rate (0.3 for equity ETFs, 0 for others)"),
 ):
     """Add a new holding to a portfolio."""
     p = portfolios_repo.get_by_id(portfolio_id)
@@ -48,13 +51,23 @@ def add(
         console.print(f"[red]Invalid asset type. Choose from: {', '.join(ASSET_TYPES)}[/red]")
         raise typer.Exit(1)
 
+    try:
+        tfs_decimal = Decimal(tfs_rate)
+        if tfs_decimal < 0 or tfs_decimal > 1:
+            raise InvalidOperation
+    except InvalidOperation:
+        console.print("[red]Invalid --tfs-rate. Must be between 0 and 1 (e.g. 0.3 for equity ETFs)[/red]")
+        raise typer.Exit(1)
+
     existing = repo.get_by_isin(portfolio_id, isin)
     if existing:
         console.print(f"[yellow]{isin} already exists in this portfolio (ID: {existing.id})[/yellow]")
         return
 
-    h = repo.create(portfolio_id, isin, AssetType(asset_type), name=name, ticker=ticker)
-    console.print(f"[green]Added {_display_name(h)} ({h.asset_type.value}) to '{p.name}' (Holding ID: {h.id})[/green]")
+    h = repo.create(portfolio_id, isin, AssetType(asset_type), name=name, ticker=ticker,
+                    teilfreistellung_rate=tfs_decimal)
+    tfs_info = f"  TFS: {tfs_decimal * 100:.0f}%" if tfs_decimal > 0 else ""
+    console.print(f"[green]Added {_display_name(h)} ({h.asset_type.value}) to '{p.name}' (Holding ID: {h.id})[/green]{tfs_info}")
 
 
 @app.command("list")
@@ -82,6 +95,7 @@ def list_holdings(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
     table.add_column("Name")
     table.add_column("Ticker")
     table.add_column("Type")
+    table.add_column("TFS%", justify="right")
     table.add_column("Shares", justify="right")
     table.add_column("Cost (€)", justify="right")
     table.add_column("Price (€)", justify="right")
@@ -97,6 +111,7 @@ def list_holdings(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
             pnl_str = f"[{color}]{pnl:,.2f}[/{color}]"
         else:
             pnl_str = "—"
+        tfs_str = f"{h.teilfreistellung_rate * 100:.0f}%" if h.teilfreistellung_rate > 0 else "—"
 
         table.add_row(
             str(h.id),
@@ -104,6 +119,7 @@ def list_holdings(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
             h.name or "—",
             h.ticker or "—",
             h.asset_type.value,
+            tfs_str,
             f"{h.shares:,.4f}",
             f"{h.cost_basis:,.2f}",
             price_str,
@@ -112,7 +128,6 @@ def list_holdings(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
         )
 
     # Summary footer with totals + cash
-    from decimal import Decimal
     total_cost = sum(h.cost_basis for h in holdings)
     total_val = sum(h.current_value for h in holdings if h.current_price)
     total_pnl = total_val - total_cost
