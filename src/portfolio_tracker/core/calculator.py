@@ -35,11 +35,20 @@ class VorabpauschaleResult:
     is_distributing: bool = False     # if True, actual distributions may reduce VP
 
 
+def _default_fsa() -> Decimal:
+    """Read Freistellungsauftrag from config (falls back to €2000 if not set)."""
+    try:
+        from .config import get_config
+        return get_config().freistellungsauftrag
+    except Exception:
+        return Decimal("2000")
+
+
 class PortfolioCalculator:
     # German tax constants
     ABGELTUNGSSTEUER_RATE = Decimal("0.25")
     SOLI_RATE = Decimal("0.055")  # 5.5% of Abgeltungssteuer
-    DEFAULT_FREISTELLUNGSAUFTRAG = Decimal("2000")  # Married couple (Zusammenveranlagung)
+    DEFAULT_FREISTELLUNGSAUFTRAG = Decimal("2000")  # fallback; use _default_fsa() at call time
 
     @staticmethod
     def total_value(holdings: list[Holding]) -> Decimal:
@@ -90,7 +99,7 @@ class PortfolioCalculator:
     @staticmethod
     def calculate_german_tax(
         realized_gain: Decimal,
-        freistellungsauftrag: Decimal = DEFAULT_FREISTELLUNGSAUFTRAG,
+        freistellungsauftrag: Decimal | None = None,
         teilfreistellung_rate: Decimal = Decimal("0"),
     ) -> TaxInfo:
         """
@@ -101,6 +110,9 @@ class PortfolioCalculator:
         - Teilfreistellung: 30% exemption for equity ETFs (§ 20 InvStG)
         - No Kirchensteuer (user not a church member)
         """
+        if freistellungsauftrag is None:
+            freistellungsauftrag = _default_fsa()
+
         info = TaxInfo(gross_gain=realized_gain)
 
         if realized_gain <= 0:
