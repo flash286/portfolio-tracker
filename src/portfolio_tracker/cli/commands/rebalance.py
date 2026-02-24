@@ -7,8 +7,9 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from ...core.models import AssetType, TransactionType
+from ...core.models import AssetType, CashTransactionType, TransactionType
 from ...core.rebalancer import Rebalancer
+from ...data.repositories.cash_repo import CashRepository
 from ...data.repositories.holdings_repo import HoldingsRepository
 from ...data.repositories.portfolios_repo import PortfoliosRepository
 from ...data.repositories.prices_repo import PricesRepository
@@ -17,6 +18,7 @@ from ...data.repositories.transactions_repo import TransactionsRepository
 
 app = typer.Typer(help="Rebalancing")
 console = Console()
+cash_repo = CashRepository()
 holdings_repo = HoldingsRepository()
 portfolios_repo = PortfoliosRepository()
 prices_repo = PricesRepository()
@@ -189,6 +191,20 @@ def suggest(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
         )
 
     console.print(table)
+
+    # Show cash impact
+    cash_balance = cash_repo.get_balance(portfolio_id)
+    buy_total = sum(t.trade_value for t in trades if t.action == TransactionType.BUY)
+    sell_total = sum(t.trade_value for t in trades if t.action == TransactionType.SELL)
+    net_cash_impact = sell_total - buy_total
+    remaining = cash_balance + net_cash_impact
+
+    console.print(f"\n  Available cash: €{cash_balance:,.2f}")
+    console.print(f"  Net cash impact: €{net_cash_impact:+,.2f}")
+    color = "green" if remaining >= 0 else "red"
+    console.print(f"  Remaining cash: [{color}]€{remaining:,.2f}[/{color}]")
+    if remaining < 0:
+        console.print(f"  [red]⚠ Not enough cash — need €{-remaining:,.2f} more[/red]")
     console.print("\n[dim]Run 'pt rebalance execute <portfolio_id>' to execute these trades[/dim]")
 
 
@@ -240,11 +256,23 @@ def execute(
         if t.action == TransactionType.BUY:
             new_shares = h.shares + t.shares
             new_cost = h.cost_basis + t.trade_value
+            # Cash outflow
+            cash_repo.create(
+                portfolio_id, CashTransactionType.BUY, -t.trade_value, now,
+                description=f"Rebalance: Buy {t.ticker or t.isin}",
+            )
         else:
             new_shares = h.shares - t.shares
             cost_per_share = h.cost_basis / h.shares if h.shares > 0 else Decimal("0")
             new_cost = h.cost_basis - (t.shares * cost_per_share)
+            # Cash inflow
+            cash_repo.create(
+                portfolio_id, CashTransactionType.SELL, t.trade_value, now,
+                description=f"Rebalance: Sell {t.ticker or t.isin}",
+            )
 
         holdings_repo.update_shares_and_cost(h.id, new_shares, new_cost)
 
+    new_balance = cash_repo.get_balance(portfolio_id)
     console.print(f"\n[green]Executed {len(trades)} rebalancing trades.[/green]")
+    console.print(f"  Cash balance: €{new_balance:,.2f}")

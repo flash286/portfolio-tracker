@@ -4,14 +4,18 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from ...data.repositories.cash_repo import CashRepository
 from ...data.repositories.portfolios_repo import PortfoliosRepository
 from ...data.repositories.holdings_repo import HoldingsRepository
+from ...data.repositories.prices_repo import PricesRepository
 from ...core.calculator import PortfolioCalculator
 
 app = typer.Typer(help="Manage portfolios")
 console = Console()
+cash_repo = CashRepository()
 repo = PortfoliosRepository()
 holdings_repo = HoldingsRepository()
+prices_repo = PricesRepository()
 
 
 @app.command("create")
@@ -57,6 +61,10 @@ def show(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
         raise typer.Exit(1)
 
     holdings = holdings_repo.list_by_portfolio(portfolio_id)
+    for h in holdings:
+        latest = prices_repo.get_latest(h.id)
+        if latest:
+            h.current_price = latest.price
     total_cost = PortfolioCalculator.total_cost_basis(holdings)
     total_val = PortfolioCalculator.total_value(holdings)
     pnl = total_val - total_cost
@@ -64,11 +72,16 @@ def show(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
     console.print(f"\n[bold]{p.name}[/bold]  (ID: {p.id})")
     if p.description:
         console.print(f"  {p.description}")
+    cash_balance = cash_repo.get_balance(portfolio_id)
+    total_portfolio = total_val + cash_balance
+
     console.print(f"  Holdings: {len(holdings)}")
     console.print(f"  Cost basis: €{total_cost:,.2f}")
     if total_val > 0:
         color = "green" if pnl >= 0 else "red"
-        console.print(f"  Current value: €{total_val:,.2f}")
+        console.print(f"  Holdings value: €{total_val:,.2f}")
+        console.print(f"  Cash balance: €{cash_balance:,.2f}")
+        console.print(f"  [bold]Portfolio value: €{total_portfolio:,.2f}[/bold]")
         console.print(f"  Unrealized P&L: [{color}]€{pnl:,.2f}[/{color}]")
     console.print()
 

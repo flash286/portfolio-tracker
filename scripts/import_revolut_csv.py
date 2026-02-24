@@ -22,7 +22,8 @@ from portfolio_tracker.data.database import get_db
 from portfolio_tracker.data.repositories.portfolios_repo import PortfoliosRepository
 from portfolio_tracker.data.repositories.holdings_repo import HoldingsRepository
 from portfolio_tracker.data.repositories.transactions_repo import TransactionsRepository
-from portfolio_tracker.core.models import AssetType, TransactionType
+from portfolio_tracker.data.repositories.cash_repo import CashRepository
+from portfolio_tracker.core.models import AssetType, TransactionType, CashTransactionType
 
 # ============================================================
 # Ticker → ISIN + metadata mapping
@@ -94,6 +95,7 @@ def main():
     portfolios = PortfoliosRepository()
     holdings_repo = HoldingsRepository()
     tx_repo = TransactionsRepository()
+    cash_repo = CashRepository()
 
     # Create portfolio
     p = portfolios.create("Revolut", "Revolut Robo-Advisor — migrating to Trade Republic")
@@ -117,9 +119,11 @@ def main():
     # Parse transaction CSV
     buy_count = 0
     div_count = 0
+    cash_count = 0
     total_invested = Decimal("0")
     total_dividends = Decimal("0")
     total_fees = Decimal("0")
+    total_topups = Decimal("0")
 
     with open(tx_csv) as f:
         reader = csv.DictReader(f)
@@ -144,7 +148,13 @@ def main():
                     dt,
                     notes="Revolut CSV import",
                 )
+                # Record cash outflow for the buy
+                cash_repo.create(
+                    p.id, CashTransactionType.BUY, -total, dt,
+                    description=f"Buy {ticker} ({qty} × €{price})",
+                )
                 buy_count += 1
+                cash_count += 1
                 total_invested += total
 
             elif tx_type == "DIVIDEND" and ticker in holding_map:
@@ -157,11 +167,31 @@ def main():
                     dt,
                     notes="Revolut dividend",
                 )
+                # Record cash inflow from dividend
+                cash_repo.create(
+                    p.id, CashTransactionType.DIVIDEND, amount, dt,
+                    description=f"Dividend from {ticker}",
+                )
                 div_count += 1
+                cash_count += 1
                 total_dividends += amount
+
+            elif tx_type == "CASH TOP-UP":
+                amount = parse_eur(row["Total Amount"])
+                cash_repo.create(
+                    p.id, CashTransactionType.TOP_UP, amount, dt,
+                    description="Revolut top-up",
+                )
+                cash_count += 1
+                total_topups += amount
 
             elif tx_type == "ROBO MANAGEMENT FEE":
                 fee = parse_eur(row["Total Amount"])
+                cash_repo.create(
+                    p.id, CashTransactionType.FEE, fee, dt,
+                    description="Robo management fee",
+                )
+                cash_count += 1
                 total_fees += fee  # negative values
 
     # Recalculate shares and cost basis from buy transactions
@@ -181,12 +211,16 @@ def main():
         print(f"  {meta['name']:50s}  {total_shares:>12.8f} units  cost €{total_cost:>10,.2f}")
 
     # Summary
+    cash_balance = cash_repo.get_balance(p.id)
     print(f"\n{'='*75}")
     print(f"  Buy transactions:    {buy_count}")
     print(f"  Dividend payments:   {div_count}")
+    print(f"  Cash transactions:   {cash_count}")
+    print(f"  Total top-ups:       €{total_topups:,.2f}")
     print(f"  Total invested:      €{total_invested:,.2f}")
     print(f"  Total dividends:     €{total_dividends:,.2f}")
     print(f"  Total fees:          €{total_fees:,.2f}")
+    print(f"  Cash balance (DB):   €{cash_balance:,.2f}")
     print(f"{'='*75}")
     print(f"\nDone! Run 'pt holdings list 1' to see your portfolio.")
 

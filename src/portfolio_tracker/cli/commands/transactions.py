@@ -8,12 +8,14 @@ from rich.console import Console
 from rich.table import Table
 
 from ...core.exceptions import InsufficientSharesError
-from ...core.models import TransactionType
+from ...core.models import CashTransactionType, TransactionType
+from ...data.repositories.cash_repo import CashRepository
 from ...data.repositories.holdings_repo import HoldingsRepository
 from ...data.repositories.transactions_repo import TransactionsRepository
 
 app = typer.Typer(help="Record transactions")
 console = Console()
+cash_repo = CashRepository()
 holdings_repo = HoldingsRepository()
 tx_repo = TransactionsRepository()
 
@@ -73,10 +75,24 @@ def _record_transaction(
 
     holdings_repo.update_shares_and_cost(holding_id, new_shares, new_cost)
 
+    # Record cash impact
+    if tx_type == TransactionType.BUY:
+        cash_repo.create(
+            h.portfolio_id, CashTransactionType.BUY, -(qty * prc), tx_date,
+            description=f"Buy {h.ticker or h.isin}",
+        )
+    elif tx_type == TransactionType.SELL:
+        cash_repo.create(
+            h.portfolio_id, CashTransactionType.SELL, qty * prc, tx_date,
+            description=f"Sell {h.ticker or h.isin}",
+        )
+
     action = "Bought" if tx_type == TransactionType.BUY else "Sold"
+    cash_balance = cash_repo.get_balance(h.portfolio_id)
     console.print(
         f"[green]{action} {qty} × {h.name or h.isin} @ €{prc:,.4f} = €{tx.total_value:,.2f}[/green]"
     )
+    console.print(f"  Cash balance: €{cash_balance:,.2f}")
 
 
 @app.command("buy")

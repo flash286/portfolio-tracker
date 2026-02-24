@@ -8,12 +8,14 @@ from rich.table import Table
 
 from ...core.calculator import PortfolioCalculator
 from ...core.models import AssetType
+from ...data.repositories.cash_repo import CashRepository
 from ...data.repositories.holdings_repo import HoldingsRepository
 from ...data.repositories.portfolios_repo import PortfoliosRepository
 from ...data.repositories.prices_repo import PricesRepository
 
 app = typer.Typer(help="Portfolio statistics")
 console = Console()
+cash_repo = CashRepository()
 holdings_repo = HoldingsRepository()
 portfolios_repo = PortfoliosRepository()
 prices_repo = PricesRepository()
@@ -57,8 +59,13 @@ def summary(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
     table.add_column("Label", style="dim")
     table.add_column("Value", justify="right")
 
+    cash_balance = cash_repo.get_balance(portfolio_id)
+    total_portfolio = total_val + cash_balance
+
     table.add_row("Total Cost Basis", f"€{total_cost:,.2f}")
-    table.add_row("Current Value", f"€{total_val:,.2f}")
+    table.add_row("Holdings Value", f"€{total_val:,.2f}")
+    table.add_row("Cash Balance", f"€{cash_balance:,.2f}")
+    table.add_row("[bold]Portfolio Value[/bold]", f"[bold]€{total_portfolio:,.2f}[/bold]")
 
     color = "green" if pnl >= 0 else "red"
     table.add_row("Unrealized P&L", f"[{color}]€{pnl:,.2f} ({pnl_pct:+.2f}%)[/{color}]")

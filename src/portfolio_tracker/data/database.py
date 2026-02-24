@@ -61,10 +61,22 @@ CREATE TABLE IF NOT EXISTS target_allocations (
     UNIQUE(portfolio_id, asset_type)
 );
 
+CREATE TABLE IF NOT EXISTS cash_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    portfolio_id INTEGER NOT NULL,
+    cash_type TEXT NOT NULL,
+    amount REAL NOT NULL,
+    transaction_date TIMESTAMP NOT NULL,
+    description TEXT DEFAULT '',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_holdings_portfolio ON holdings(portfolio_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_holding ON transactions(holding_id);
 CREATE INDEX IF NOT EXISTS idx_price_history_holding ON price_history(holding_id);
 CREATE INDEX IF NOT EXISTS idx_target_allocations_portfolio ON target_allocations(portfolio_id);
+CREATE INDEX IF NOT EXISTS idx_cash_transactions_portfolio ON cash_transactions(portfolio_id);
 """
 
 

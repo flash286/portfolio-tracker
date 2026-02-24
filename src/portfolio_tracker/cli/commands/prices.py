@@ -51,9 +51,15 @@ def fetch(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
             lookup = h.ticker or h.isin  # Prefer ticker, fallback to ISIN
             if not lookup:
                 continue
-            price = fetcher.fetch_price(lookup)
-            if price is not None:
-                prices_by_id[h.id] = price
+            try:
+                price = fetcher.fetch_price(lookup)
+                if price is not None:
+                    prices_by_id[h.id] = price
+                    console.print(f"  [green]✓[/green] {h.ticker or h.isin}: {price}")
+                else:
+                    console.print(f"  [yellow]✗[/yellow] {h.ticker or h.isin}: no price found")
+            except Exception as e:
+                console.print(f"  [red]✗[/red] {h.ticker or h.isin}: {e}")
 
     # Fetch crypto prices via CoinGecko (needs ticker like BTC, ETH)
     if crypto_holdings:

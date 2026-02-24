@@ -5,12 +5,14 @@ from rich.console import Console
 from rich.table import Table
 
 from ...core.models import AssetType
+from ...data.repositories.cash_repo import CashRepository
 from ...data.repositories.holdings_repo import HoldingsRepository
 from ...data.repositories.portfolios_repo import PortfoliosRepository
 from ...data.repositories.prices_repo import PricesRepository
 
 app = typer.Typer(help="Manage holdings")
 console = Console()
+cash_repo = CashRepository()
 repo = HoldingsRepository()
 portfolios_repo = PortfoliosRepository()
 prices_repo = PricesRepository()
@@ -109,7 +111,17 @@ def list_holdings(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
             pnl_str,
         )
 
+    # Summary footer with totals + cash
+    from decimal import Decimal
+    total_cost = sum(h.cost_basis for h in holdings)
+    total_val = sum(h.current_value for h in holdings if h.current_price)
+    total_pnl = total_val - total_cost
+    cash_balance = cash_repo.get_balance(portfolio_id)
+
+    pnl_color = "green" if total_pnl >= 0 else "red"
+    table.add_row("", "", "", "", "", "", f"[bold]{total_cost:,.2f}[/bold]", "", f"[bold]{total_val:,.2f}[/bold]", f"[bold {pnl_color}]{total_pnl:,.2f}[/bold {pnl_color}]")
     console.print(table)
+    console.print(f"  Cash: [green]€{cash_balance:,.2f}[/green]  |  Total: [bold]€{total_val + cash_balance:,.2f}[/bold]\n")
 
 
 @app.command("remove")

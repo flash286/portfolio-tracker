@@ -20,6 +20,15 @@ class TransactionType(str, Enum):
     DIVIDEND = "dividend"
 
 
+class CashTransactionType(str, Enum):
+    TOP_UP = "top_up"
+    WITHDRAWAL = "withdrawal"
+    FEE = "fee"
+    DIVIDEND = "dividend"  # cash received from dividends
+    BUY = "buy"            # cash spent on purchases
+    SELL = "sell"           # cash received from sales
+
+
 @dataclass
 class Portfolio:
     name: str
@@ -110,6 +119,18 @@ class RebalanceTrade:
     @property
     def trade_value(self) -> Decimal:
         return self.shares * self.current_price
+
+
+@dataclass
+class CashTransaction:
+    """Cash movement in a portfolio (top-up, withdrawal, fee, etc.)."""
+    portfolio_id: int
+    cash_type: CashTransactionType
+    amount: Decimal  # positive = cash in, negative = cash out
+    transaction_date: datetime
+    description: str = ""
+    id: Optional[int] = None
+    created_at: Optional[datetime] = None
 
 
 @dataclass
