@@ -278,3 +278,20 @@ def vorabpauschale(
         console.print("\n  [yellow]⚠ Distributing funds (Dist.) — Ausschüttungen reduzieren die VP.[/yellow]")
         console.print("  [dim]Tatsächliche VP = max(0, Basisertrag − Ausschüttungen/Anteil). Wert oben ist Obergrenze.[/dim]")
     console.print()
+
+    # Save to cache so the dashboard can read it without fetching prices
+    from ...data.database import get_db
+    db = get_db()
+    db.conn.execute(
+        """INSERT INTO vorabpauschale_cache
+               (portfolio_id, year, total_vp, tfs_exempt, taxable_vp, fsa_used, computed_at)
+           VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(portfolio_id, year) DO UPDATE SET
+               total_vp=excluded.total_vp, tfs_exempt=excluded.tfs_exempt,
+               taxable_vp=excluded.taxable_vp, fsa_used=excluded.fsa_used,
+               computed_at=excluded.computed_at""",
+        (portfolio_id, year, str(total_vp), str(total_vp - total_taxable),
+         str(total_taxable), str(tax_info.freistellungsauftrag_used)),
+    )
+    db.conn.commit()
+    console.print(f"  [dim]✓ Cached — dashboard will show VP {year} FSA usage[/dim]\n")

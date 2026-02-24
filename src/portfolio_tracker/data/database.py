@@ -93,6 +93,19 @@ CREATE INDEX IF NOT EXISTS idx_price_history_holding ON price_history(holding_id
 CREATE INDEX IF NOT EXISTS idx_target_allocations_portfolio ON target_allocations(portfolio_id);
 CREATE INDEX IF NOT EXISTS idx_cash_transactions_portfolio ON cash_transactions(portfolio_id);
 CREATE INDEX IF NOT EXISTS idx_tax_lots_holding ON tax_lots(holding_id, acquired_date);
+
+CREATE TABLE IF NOT EXISTS vorabpauschale_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    portfolio_id INTEGER NOT NULL,
+    year INTEGER NOT NULL,
+    total_vp TEXT NOT NULL,
+    tfs_exempt TEXT NOT NULL,
+    taxable_vp TEXT NOT NULL,
+    fsa_used TEXT NOT NULL,
+    computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(portfolio_id, year),
+    FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
+);
 """
 
 

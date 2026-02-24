@@ -38,6 +38,25 @@ def _get_cash_balance(portfolio_id: int) -> Decimal:
     return cash_repo.get_balance(portfolio_id)
 
 
+def _collect_vp_fsa(portfolio_id: int) -> dict:
+    """Read Vorabpauschale FSA usage from cache (populated by pt tax vorabpauschale)."""
+    from ..commands.tax import app as _  # ensure tax module loaded (noop)
+    from ...data.database import get_db
+    db = get_db()
+    rows = db.conn.execute(
+        """SELECT year, taxable_vp, fsa_used FROM vorabpauschale_cache
+           WHERE portfolio_id = ? ORDER BY year DESC LIMIT 3""",
+        (portfolio_id,),
+    ).fetchall()
+    if not rows:
+        return {"vp_entries": []}
+    entries = [
+        {"year": r["year"], "taxable_vp": Decimal(r["taxable_vp"]), "fsa_used": Decimal(r["fsa_used"])}
+        for r in rows
+    ]
+    return {"vp_entries": entries}
+
+
 def _collect_realized(portfolio_id: int, holding_by_id: dict, calc) -> dict:
     """Collect current-year realized gains from sell transactions."""
     tx_repo = TransactionsRepository()
@@ -215,6 +234,7 @@ def _collect_data(portfolio_id: int) -> dict:
             "soli": tax_info.solidaritaetszuschlag,
             "total_tax": tax_info.total_tax,
             "net_gain": tax_info.net_gain,
+            **_collect_vp_fsa(portfolio_id),
         },
         "allocation_by_type": {k: v for k, v in alloc_by_type.items()},
         "holdings": holdings_data,
@@ -621,10 +641,17 @@ function render() {
   const tfsRow = Number(t.tfs_exempt) > 0
     ? `<div class="tax-item"><span class="tl">Teilfreistellung ~${fmt(t.tfs_rate_pct,1)}% <span style="opacity:0.5;font-size:11px">(partial exemption)</span></span><span class="tv positive">-${fmt(t.tfs_exempt)} €</span></div>`
     : '';
+  const vpRows = (t.vp_entries||[]).map(vp =>
+    `<div class="tax-item"><span class="tl">Vorabpauschale ${vp.year} <span style="opacity:0.5;font-size:11px">(prepayment tax)</span></span><span class="tv" style="color:var(--amber)">−${fmt(vp.fsa_used)} € FSA</span></div>`
+  ).join('');
+  const fsaTotal = 2000;
+  const fsaUsedVP = (t.vp_entries||[]).reduce((s,v) => s + Number(v.fsa_used), 0);
+  const fsaRemaining = fsaTotal - fsaUsedVP;
   taxEl.innerHTML = `<div class="tax-grid">
     <div class="tax-item"><span class="tl">Unrealized Gain <span style="opacity:0.5;font-size:11px">(hypothetical)</span></span><span class="tv">${fmt(t.gross_gain)} €</span></div>
     ${tfsRow}
-    <div class="tax-item"><span class="tl">Freistellungsauftrag <span style="opacity:0.5;font-size:11px">(tax-free allowance)</span></span><span class="tv positive">-${fmt(t.freistellungsauftrag_used)} €</span></div>
+    ${vpRows}
+    <div class="tax-item"><span class="tl">Freistellungsauftrag <span style="opacity:0.5;font-size:11px">(tax-free allowance)</span></span><span class="tv positive">-${fmt(fsaRemaining > 0 ? Math.min(Number(t.taxable_gain), fsaRemaining) : 0)} €</span></div>
     <div class="tax-item"><span class="tl">Taxable Gain</span><span class="tv">${fmt(t.taxable_gain)} €</span></div>
     <div class="tax-item"><span class="tl">Abgeltungssteuer 25% <span style="opacity:0.5;font-size:11px">(flat capital gains tax)</span></span><span class="tv">${fmt(t.abgeltungssteuer)} €</span></div>
     <div class="tax-item"><span class="tl">Solidaritätszuschlag 5.5% <span style="opacity:0.5;font-size:11px">(solidarity surcharge)</span></span><span class="tv">${fmt(t.soli)} €</span></div>
