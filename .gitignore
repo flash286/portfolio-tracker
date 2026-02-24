@@ -15,3 +15,9 @@ build/
 
 # pytest
 .pytest_cache/
+
+# Personal data — never commit
+portfolio.db
+config.json
+data/*.csv
+data/*.pdf

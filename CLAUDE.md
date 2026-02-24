@@ -71,7 +71,7 @@ SQLite at project root (`portfolio.db`), checked into git as backup.
 - **Repository pattern**: Each table has its own repo class in `data/repositories/`
 - **Decimal everywhere**: Financial calculations use `Decimal`, not `float`
 - **EUR-centric**: All prices and values in EUR
-- **German tax model**: Abgeltungssteuer (25%) + Soli (5.5%), Freistellungsauftrag €2,000 (married)
+- **German tax model**: Abgeltungssteuer (25%) + Soli (5.5%), Freistellungsauftrag configured via `config.json` (default €1,000 single / €2,000 joint)
 - **Asset types**: stock, etf, crypto, bond (enum `AssetType`)
 - **Cash is first-class**: Every buy/sell/dividend/fee creates a `cash_transactions` record. Cash balance = SUM(amount) from cash_transactions for the portfolio.
 - **ISINs as primary identifiers**: Trade Republic standard. Tickers are secondary, used only for yfinance lookups.

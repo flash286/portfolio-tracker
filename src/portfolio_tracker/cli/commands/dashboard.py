@@ -11,6 +11,7 @@ import typer
 from rich.console import Console
 
 from ...core.calculator import PortfolioCalculator
+from ...core.config import get_config
 from ...core.models import Holding
 from ...core.rebalancer import Rebalancer
 from ...data.repositories.cash_repo import CashRepository
@@ -236,6 +237,7 @@ def _collect_data(portfolio_id: int) -> dict:
             "net_gain": tax_info.net_gain,
             **_collect_vp_fsa(portfolio_id),
         },
+        "freistellungsauftrag": float(get_config().freistellungsauftrag),
         "allocation_by_type": {k: v for k, v in alloc_by_type.items()},
         "holdings": holdings_data,
         "deviations": deviation_data,
@@ -644,7 +646,7 @@ function render() {
   const vpRows = (t.vp_entries||[]).map(vp =>
     `<div class="tax-item"><span class="tl">Vorabpauschale ${vp.year} <span style="opacity:0.5;font-size:11px">(prepayment tax)</span></span><span class="tv" style="color:var(--amber)">−${fmt(vp.fsa_used)} € FSA</span></div>`
   ).join('');
-  const fsaTotal = 2000;
+  const fsaTotal = D.freistellungsauftrag || 1000;
   const fsaUsedVP = (t.vp_entries||[]).reduce((s,v) => s + Number(v.fsa_used), 0);
   const fsaRemaining = fsaTotal - fsaUsedVP;
   taxEl.innerHTML = `<div class="tax-grid">
