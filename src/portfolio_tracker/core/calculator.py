@@ -1,9 +1,38 @@
 """Portfolio statistics calculator."""
 
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Optional
 
 from .models import AssetType, Holding, TaxInfo
+
+# Basiszins published by BMF each January (§ 18 Abs. 4 InvStG)
+# Negative years → 0 (no Vorabpauschale due)
+BASISZINS: dict[int, Decimal] = {
+    2021: Decimal("0"),
+    2022: Decimal("0"),
+    2023: Decimal("0.0255"),
+    2024: Decimal("0.0229"),
+    2025: Decimal("0.0253"),
+}
+
+
+@dataclass
+class VorabpauschaleResult:
+    """Per-holding Vorabpauschale calculation result."""
+    ticker: str
+    isin: str
+    year: int
+    shares_jan1: Decimal
+    price_jan1: Decimal
+    price_dec31: Decimal
+    basisertrag_per_share: Decimal    # price_jan1 × basiszins × 0.7
+    fondszuwachs_per_share: Decimal   # price_dec31 - price_jan1 (min 0)
+    vorabpauschale: Decimal           # min(basisertrag, fondszuwachs) × shares
+    tfs_rate: Decimal
+    tfs_exempt: Decimal               # vorabpauschale × tfs_rate
+    taxable_vp: Decimal               # vorabpauschale - tfs_exempt
+    is_distributing: bool = False     # if True, actual distributions may reduce VP
 
 
 class PortfolioCalculator:
@@ -99,3 +128,46 @@ class PortfolioCalculator:
 
         info.net_gain = realized_gain - info.total_tax
         return info
+
+    @staticmethod
+    def calculate_vorabpauschale(
+        ticker: str,
+        isin: str,
+        year: int,
+        shares_jan1: Decimal,
+        price_jan1: Decimal,
+        price_dec31: Decimal,
+        teilfreistellung_rate: Decimal,
+        is_distributing: bool = False,
+    ) -> VorabpauschaleResult:
+        """
+        Calculate Vorabpauschale for one holding for one year.
+
+        Formula (§ 18 InvStG):
+          Basisertrag = Kurs_01.01 × Basiszins × 0.7
+          Vorabpauschale = min(Basisertrag, max(Fondszuwachs, 0)) × Anteile
+          Steuerpflichtig = Vorabpauschale × (1 − Teilfreistellung)
+        """
+        basiszins = BASISZINS.get(year, Decimal("0"))
+        basisertrag_per_share = (price_jan1 * basiszins * Decimal("0.7")).quantize(Decimal("0.0001"))
+        fondszuwachs_per_share = max(price_dec31 - price_jan1, Decimal("0"))
+        vp_per_share = min(basisertrag_per_share, fondszuwachs_per_share)
+        vorabpauschale = (vp_per_share * shares_jan1).quantize(Decimal("0.01"))
+        tfs_exempt = (vorabpauschale * teilfreistellung_rate).quantize(Decimal("0.01"))
+        taxable_vp = vorabpauschale - tfs_exempt
+
+        return VorabpauschaleResult(
+            ticker=ticker,
+            isin=isin,
+            year=year,
+            shares_jan1=shares_jan1,
+            price_jan1=price_jan1,
+            price_dec31=price_dec31,
+            basisertrag_per_share=basisertrag_per_share,
+            fondszuwachs_per_share=fondszuwachs_per_share,
+            vorabpauschale=vorabpauschale,
+            tfs_rate=teilfreistellung_rate,
+            tfs_exempt=tfs_exempt,
+            taxable_vp=taxable_vp,
+            is_distributing=is_distributing,
+        )

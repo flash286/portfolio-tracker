@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Optional
 
 import yfinance as yf
+from datetime import timedelta
 
 from ..core.exceptions import PriceFetchError
 
@@ -86,6 +87,26 @@ class PriceFetcher:
             if price is not None:
                 return Decimal(str(round(price, 4)))
 
+        return None
+
+    @staticmethod
+    def fetch_historical_price(
+        ticker: str, start: str, end: str, last: bool = False
+    ) -> Optional[Decimal]:
+        """Fetch a historical closing price within a date window (YYYY-MM-DD).
+
+        Uses the first available close if last=False, or last if last=True.
+        Useful for Jan 1 (first trading day) and Dec 31 (last trading day).
+        """
+        yahoo_symbol = TICKER_OVERRIDES.get(ticker.upper(), ticker)
+        try:
+            t = yf.Ticker(yahoo_symbol)
+            hist = t.history(start=start, end=end)
+            if not hist.empty:
+                price = float(hist["Close"].iloc[-1 if last else 0])
+                return Decimal(str(round(price, 4)))
+        except Exception:
+            pass
         return None
 
     @staticmethod
