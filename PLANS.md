@@ -122,6 +122,61 @@ Monthly Sparplan — автоматические покупки в Trade Republ
 
 ---
 
+---
+
+## 9. User-Agnostic Configuration
+
+Сейчас в коде захардкожена персональная специфика одного пользователя. Нужно вынести это в конфиг.
+
+### Что захардкожено сейчас
+
+| Место | Что | Где |
+|-------|-----|-----|
+| `calculator.py` | `DEFAULT_FREISTELLUNGSAUFTRAG = €2000` (женатый) | core |
+| `calculator.py` | Ставки налога 25% + 5.5% Soli | core |
+| `dashboard.py` | `isin_names` — захардкоженные тикеры Portfolio A | dashboard |
+| `dashboard.py` | `fsaTotal = 2000` в JS | dashboard |
+| `CLAUDE.md` / `AGENTS.md` | Имя, гражданство, брокер, налоговый профиль | docs |
+| `price_fetcher.py` | `TICKER_OVERRIDES` — только Revolut + Portfolio A тикеры | external |
+
+### Что сделать
+
+**`config.toml` в корне проекта** (создаётся при первом запуске):
+```toml
+[tax]
+country = "DE"
+freistellungsauftrag = 2000   # 1000 single / 2000 married
+abgeltungssteuer_rate = 0.25
+soli_rate = 0.055
+kirchensteuer = false
+
+[user]
+name = ""          # optional, for display only
+currency = "EUR"
+
+[prices]
+default_exchange_suffix = ".DE"
+```
+
+**`pt config set tax.freistellungsauftrag 1000`** — CLI для изменения
+
+**Убрать из кода:**
+- Хардкоженный `€2,000` → читать из конфига
+- `isin_names` в dashboard → брать из holdings в БД (уже почти так)
+- `fsaTotal = 2000` в JS → передавать из Python в JSON-данные
+
+**Убрать из документации:**
+- Личные данные (имя, гражданство) → в `README` только как пример
+- `CLAUDE.md` оставить только техническую специфику проекта
+
+### Что НЕ менять
+
+- Немецкая налоговая модель как дефолт (целевая аудитория — DE резиденты)
+- SQLite как хранилище — достаточно для одного пользователя
+- CLI-first подход
+
+---
+
 ## Приоритеты
 
 | # | Задача | Сложность | Ценность |
@@ -132,6 +187,7 @@ Monthly Sparplan — автоматические покупки в Trade Republ
 | 4 | Performance history | Средняя | Средняя — приятно, но не срочно |
 | 5 | Sparplan tracking | Низкая | Средняя — после настройки DCA в TR |
 | 6 | Multi-portfolio | Низкая | Средняя — частично уже работает |
-| 7 | pytr автосинк | Высокая | Низкая — приватный API, нестабильно |
-| 8 | Alerts | Средняя | Низкая — nice to have |
-| 9 | Steuererklärung | Средняя | Низкая — раз в год |
+| 7 | User-agnostic config | Средняя | Средняя — нужно перед open source |
+| 8 | pytr автосинк | Высокая | Низкая — приватный API, нестабильно |
+| 9 | Alerts | Средняя | Низкая — nice to have |
+| 10 | Steuererklärung | Средняя | Низкая — раз в год |
