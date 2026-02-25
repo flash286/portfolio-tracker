@@ -106,6 +106,55 @@ class PriceFetcher:
         return None
 
     @staticmethod
+    def fetch_price_series(
+        ticker: str,
+        start: str,
+        end: str,
+        interval: str = "1wk",
+    ) -> dict[str, Decimal]:
+        """Fetch historical Close prices for a ticker.
+
+        Tries TICKER_OVERRIDES first, then the raw ticker, then exchange suffixes.
+
+        Args:
+            ticker:   Portfolio ticker (e.g. "VWCE").
+            start:    ISO date string "YYYY-MM-DD" (inclusive).
+            end:      ISO date string "YYYY-MM-DD" (exclusive).
+            interval: yfinance interval — "1d", "1wk", or "1mo".
+
+        Returns:
+            Dict mapping date strings "YYYY-MM-DD" to Decimal close prices.
+            Empty dict if the ticker cannot be resolved or yfinance returns no data.
+        """
+        ticker_upper = ticker.upper()
+        candidates: list[str] = []
+        if ticker_upper in TICKER_OVERRIDES:
+            candidates.append(TICKER_OVERRIDES[ticker_upper])
+        candidates.append(ticker)
+        base = ticker.split(".")[0]
+        for suffix in EXCHANGE_SUFFIXES:
+            candidate = base + suffix
+            if candidate not in candidates:
+                candidates.append(candidate)
+
+        for symbol in candidates:
+            try:
+                hist = yf.Ticker(symbol).history(
+                    start=start, end=end, interval=interval, auto_adjust=True
+                )
+                if hist.empty:
+                    continue
+                result: dict[str, Decimal] = {}
+                for ts, close in hist["Close"].items():
+                    # yfinance returns tz-aware pandas Timestamps
+                    d = ts.date().isoformat() if hasattr(ts, "date") else str(ts)[:10]
+                    result[d] = Decimal(str(close)).quantize(Decimal("0.0001"))
+                return result
+            except Exception:
+                continue
+        return {}
+
+    @staticmethod
     def fetch_batch(symbols: list[str]) -> dict[str, Optional[Decimal]]:
         """Fetch prices for multiple symbols at once."""
         results: dict[str, Optional[Decimal]] = {}

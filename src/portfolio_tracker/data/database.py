@@ -106,6 +106,23 @@ CREATE TABLE IF NOT EXISTS vorabpauschale_cache (
     UNIQUE(portfolio_id, year),
     FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    portfolio_id INTEGER NOT NULL,
+    date DATE NOT NULL,
+    holdings_value TEXT NOT NULL DEFAULT '0',
+    cash_balance TEXT NOT NULL DEFAULT '0',
+    total_value TEXT NOT NULL DEFAULT '0',
+    cost_basis TEXT NOT NULL DEFAULT '0',
+    unrealized_pnl TEXT NOT NULL DEFAULT '0',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(portfolio_id, date),
+    FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_snapshots_portfolio_date
+    ON portfolio_snapshots(portfolio_id, date);
 """
 
 

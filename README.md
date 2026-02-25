@@ -34,8 +34,9 @@ Built for European ETF investors living in Germany.
 - **Rebalancing** — target allocations by ISIN/type, deviation check, trade suggestions
 - **Price fetching** — automatic yfinance lookups for European ETFs (`.DE` `.L` `.AS` …)
 - **Cash tracking** — full ledger: top-ups, buys, sells, dividends, fees
+- **Performance history** — Time-Weighted Return over 1m/3m/6m/1y/2y/all, auto-fetches historical prices
 - **Revolut import** — idempotent one-command CSV import
-- **Web dashboard** — offline SPA: charts, tax summary, Markdown export
+- **Web dashboard** — tabbed SPA: allocation charts, sortable holdings table, P&L bars, FSA progress, tax summary, rebalancing, AI Analysis
 - **AI Analysis** — one-click portfolio review by Claude / GPT / Gemini in the dashboard
 - **AI import** — Claude Code skill imports any broker CSV without writing code
 
@@ -168,11 +169,27 @@ TICKER_OVERRIDES = {
 ## Statistics
 
 ```bash
-pt stats summary 1         # P&L, allocation, estimated tax
-pt stats allocation 1      # breakdown by asset type
+pt stats summary 1               # P&L, allocation, estimated tax
+pt stats allocation 1            # breakdown by asset type
+pt stats performance 1           # value history + Time-Weighted Return
+pt stats performance 1 --period 2y   # longer range: 1m|3m|6m|1y|2y|all
 ```
 
 The tax estimate in `summary` applies Teilfreistellung → Freistellungsauftrag → Abgeltungssteuer + Soli. This is a hypothetical estimate (as if you sold everything today).
+
+`pt stats performance` automatically backfills missing history from yfinance the first time you run it for a given period — no manual setup needed.
+
+---
+
+## Performance snapshots
+
+```bash
+pt snapshot take 1               # record today's portfolio value
+pt snapshot backfill 1           # fill history from yfinance (all time)
+pt snapshot backfill 1 --since 2024-01-01 --interval 1d   # daily, from a date
+```
+
+Snapshots power the performance chart in `pt stats performance` and the dashboard. `pt dashboard open` records a snapshot automatically on every open.
 
 ---
 
@@ -237,14 +254,21 @@ pt dashboard open 1
 pt dashboard open 1 --output /tmp/portfolio.html   # save to file
 ```
 
-Offline single-page app — no CDN, no network required after opening. Features:
-- Portfolio value / P&L / cash cards
-- Allocation donut charts (by holding and by type)
-- Holdings table with TFS rates and rebalancing deviation badges
-- **Tax Summary** — Vorabpauschale FSA usage, TFS exemption, Abgeltungssteuer estimate
-- Target vs. Actual allocation bars
+Opens a local HTTP server at `http://127.0.0.1:<port>` and launches the browser. Press **Ctrl+C** in the terminal to stop. No CDN, no external requests (except the optional AI Analysis call).
+
+The dashboard is organised into **5 tabs**:
+
+| Tab | Content |
+|-----|---------|
+| **Overview** | KPI cards · allocation donut charts · P&L bar chart per holding |
+| **Holdings** | Sortable, filterable table (click any column header to sort) |
+| **Tax** | Freistellungsauftrag progress bar · tax summary · realized gains |
+| **Rebalancing** | Target vs. actual deviation bars |
+| **AI Analysis** | One-click deep analysis by your configured AI provider |
+
+Other features:
 - **Copy as Markdown** — exports a full portfolio snapshot for AI review
-- **AI Analysis** — one-click deep analysis by your configured AI provider (see below)
+- Auto-records a snapshot on every open (used by the performance chart)
 
 ---
 
@@ -266,11 +290,11 @@ The dashboard includes a built-in **AI Analysis** panel powered by your choice o
 
 ### Supported providers
 
-| Provider | Default model | Reasoning |
-|----------|--------------|-----------|
-| **Anthropic** | `claude-opus-4-6` | Extended thinking (8k budget tokens) |
-| **OpenAI** | `o3` | Native chain-of-thought reasoning |
-| **Google Gemini** | `gemini-2.5-pro` | Thinking budget 8k tokens |
+| Provider | Default model |
+|----------|--------------|
+| **Anthropic** | `claude-sonnet-4-6` |
+| **OpenAI** | `o3` |
+| **Google Gemini** | `gemini-2.5-pro` |
 
 ### Setup
 
@@ -360,7 +384,8 @@ pt portfolio  create | list | show | delete
 pt holdings   add | list | remove
 pt tx         buy | sell | list
 pt prices     fetch | history
-pt stats      summary | allocation
+pt stats      summary | allocation | performance
+pt snapshot   take | backfill
 pt rebalance  target | check | suggest | execute
 pt cash       balance | history | add
 pt tax        realized | lots | vorabpauschale

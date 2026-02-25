@@ -269,7 +269,7 @@ tests/
 Run all tests:
 
 ```bash
-pytest                           # all 190+
+pytest                           # all 226
 pytest tests/unit/test_tax/      # tax only
 pytest tests/integration/        # e2e only
 ```
@@ -278,9 +278,15 @@ pytest tests/integration/        # e2e only
 
 `HoldingsRepository.list_by_portfolio()` returns
 `Holding` objects with `current_price = None`.
-Prices **must be attached manually**:
+
+**Always use the helper method** — never write
+a manual price-loading loop:
 
 ```python
+# CORRECT
+holdings = holdings_repo.list_by_portfolio_with_prices(pid)
+
+# WRONG — duplicates internal logic
 holdings = holdings_repo.list_by_portfolio(pid)
 for h in holdings:
     latest = prices_repo.get_latest(h.id)
@@ -288,13 +294,79 @@ for h in holdings:
         h.current_price = latest.price
 ```
 
-Forgetting this causes `total_value()`,
+Forgetting prices causes `total_value()`,
 `allocation_by_type()`, and `weighted_portfolio_tfs()`
 to silently return `0` / `{}`.
 
-This same pattern is required in test fixtures
-(see `portfolio_with_prices` in `test_end_to_end.py`)
-and in any CLI command that displays values.
+Commands that display values/P&L/allocation
+must use `list_by_portfolio_with_prices()`:
+`stats.py`, `rebalance.py`, `portfolio.py`,
+`holdings.py`, `dashboard.py`
+
+## Linting
+
+**Tool:** `ruff` (line length: 120)
+
+```bash
+# Check — scope is src/ and tests/ only
+python -m ruff check src/ tests/
+
+# Auto-fix safe issues
+python -m ruff check --fix src/ tests/
+```
+
+- `scripts/simulate_portfolios.py` has known
+  legacy lint issues — do NOT fix unless asked
+- For unavoidable long lines: `# noqa: E501`
+
+## Repository Quick Reference
+
+```python
+# Generic INSERT (skips id, created_at,
+# updated_at — defined in _insert_skip)
+repo._insert(obj)
+
+# Idempotent INSERT OR IGNORE with source_id
+repo._insert_with_source_id(
+    obj, source_id,
+    extra_fields={"computed_col": value}
+)
+
+# UPDATE by obj.id (same skip set)
+repo.save(obj)
+```
+
+`_insert_skip` per repo:
+- Default: `{"id", "created_at", "updated_at"}`
+- `HoldingsRepository`: also skips
+  `"current_price"` (model-only field)
+
+`Transaction.total_value` is a `@property`
+(not a dataclass field) but required as DB
+column — pass via
+`extra_fields={"total_value": ...}`.
+
+## Code Review Quality Gate
+
+For quality-critical changes, spawn three
+independent parallel agents with **zero context**:
+
+1. **Fintech calculations** — Decimal usage,
+   tax math, FIFO logic correctness
+2. **Security** — input validation, injection,
+   sensitive data (local-only app)
+3. **Code quality** — duplication, type hints,
+   error handling, consistency
+
+Repeat until all three report no new issues.
+Typical: 2–3 rounds.
+
+Common issues to watch for:
+- `float` in financial math (must be `Decimal`)
+- Manual price-loading loops (use helper above)
+- Silent failures without user-visible warnings
+- Imprecise type hints (`object` vs
+  `Optional[Decimal]`)
 
 ## Conventions
 

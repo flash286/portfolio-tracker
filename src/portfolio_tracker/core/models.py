@@ -159,3 +159,17 @@ class TaxInfo:
     solidaritaetszuschlag: Decimal = Decimal("0")  # 5.5% of Abgeltungssteuer
     total_tax: Decimal = Decimal("0")
     net_gain: Decimal = Decimal("0")
+
+
+@dataclass
+class PortfolioSnapshot:
+    """Daily snapshot of portfolio financial state for performance tracking."""
+    portfolio_id: int
+    date: str  # YYYY-MM-DD stored as TEXT in SQLite
+    holdings_value: Decimal = Decimal("0")
+    cash_balance: Decimal = Decimal("0")
+    total_value: Decimal = Decimal("0")
+    cost_basis: Decimal = Decimal("0")
+    unrealized_pnl: Decimal = Decimal("0")
+    id: Optional[int] = None
+    created_at: Optional[datetime] = None

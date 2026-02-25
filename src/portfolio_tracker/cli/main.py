@@ -12,6 +12,7 @@ from .commands import (
     prices,
     rebalance,
     setup,
+    snapshot,
     stats,
     tax,
     transactions,
@@ -35,6 +36,7 @@ app.add_typer(tax.app, name="tax", help="Tax reporting (FIFO lots, realized gain
 app.add_typer(dashboard.app, name="dashboard", help="Web dashboard")
 app.add_typer(setup.app, name="setup", help="Interactive setup wizard")
 app.add_typer(import_cmd.app, name="import", help="Import from broker CSV exports")
+app.add_typer(snapshot.app, name="snapshot", help="Portfolio value snapshots")
 
 
 @app.callback()

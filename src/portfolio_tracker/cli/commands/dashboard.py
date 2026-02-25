@@ -1,8 +1,9 @@
 """Dashboard — generate an interactive web dashboard for a portfolio."""
 
+import http.server
 import json
-import secrets
-import tempfile
+import socket
+import socketserver
 import webbrowser
 from datetime import datetime
 from decimal import Decimal
@@ -97,6 +98,24 @@ def _collect_realized(portfolio_id: int, holding_by_id: dict, calc) -> dict:
         "net_gain": realized_tax_info.net_gain,
         "sells": sell_rows,
     }
+
+
+def _collect_snapshots(portfolio_id: int) -> list[dict]:
+    """Return last 365 days of snapshots for the performance chart."""
+    import datetime as _dt
+
+    from ...data.repositories.snapshots_repo import SnapshotsRepository
+    since = (_dt.date.today() - _dt.timedelta(days=365)).isoformat()
+    snaps = SnapshotsRepository().list_by_portfolio(portfolio_id, since_date=since)
+    return [
+        {
+            "date": s.date,
+            "holdings_value": s.holdings_value,
+            "cash_balance": s.cash_balance,
+            "total_value": s.total_value,
+        }
+        for s in snaps
+    ]
 
 
 def _collect_data(portfolio_id: int) -> dict:
@@ -239,6 +258,7 @@ def _collect_data(portfolio_id: int) -> dict:
         "holdings": holdings_data,
         "deviations": deviation_data,
         "realized": _collect_realized(portfolio_id, holding_by_id, calc),
+        "snapshots": _collect_snapshots(portfolio_id),
     }
 
 
@@ -320,6 +340,46 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .rec-item { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
   .rec-item:last-child { border-bottom: none; }
   .rec-num { font-weight: 700; color: #a855f7; min-width: 18px; }
+  /* Tabs */
+  .tab-nav { display:flex; gap:4px; margin-bottom:24px; border-bottom:1px solid var(--border); }
+  .tab-btn { background:none; border:none; color:var(--text2); padding:10px 18px; font-size:14px;
+    font-weight:500; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px;
+    border-radius:4px 4px 0 0; transition:color .15s,border-color .15s; }
+  .tab-btn:hover { color:var(--text); background:var(--surface2); }
+  .tab-btn.active { color:var(--blue); border-bottom-color:var(--blue); }
+  .tab-panel { display:none; }
+  .tab-panel.active { display:block; }
+  /* Filter input */
+  .filter-input { background:var(--surface2); border:1px solid var(--border); color:var(--text);
+    padding:7px 12px; border-radius:8px; font-size:13px; width:220px; outline:none; }
+  .filter-input:focus { border-color:var(--blue); }
+  /* Sortable table headers */
+  .sortable-th { cursor:pointer; user-select:none; white-space:nowrap; }
+  .sortable-th:hover { color:var(--text); }
+  .sort-arrow { font-size:10px; margin-left:3px; color:var(--blue); }
+  /* FSA progress bar */
+  .fsa-bar-wrap { height:12px; background:var(--surface2); border-radius:6px; overflow:hidden; }
+  .fsa-bar-fill { height:100%; border-radius:6px; transition:width .5s; }
+  /* P&L bar row */
+  .pnl-row { display:flex; align-items:center; gap:8px; padding:4px 0;
+    border-bottom:1px solid var(--border); }
+  .pnl-row:last-child { border-bottom:none; }
+  .pnl-label { width:56px; font-size:12px; font-weight:600; text-align:right;
+    flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pnl-bar-bg { flex:1; height:18px; background:var(--surface2); border-radius:3px;
+    overflow:hidden; position:relative; }
+  .pnl-bar-fill { position:absolute; top:0; left:0; height:100%;
+    border-radius:3px; transition:width .3s; }
+  .pnl-val { width:64px; font-size:12px; text-align:right; flex-shrink:0;
+    font-variant-numeric:tabular-nums; }
+  /* Performance line chart */
+  .line-chart-svg { width:100%; overflow:visible; }
+  .line-chart-svg .axis-line { stroke:var(--border); stroke-width:1; }
+  .line-chart-svg .grid-line { stroke:var(--border); stroke-width:0.5; stroke-dasharray:4,4; }
+  .line-chart-svg .axis-label { fill:var(--text2); font-size:11px; }
+  .line-chart-svg .line-total { fill:none; stroke:var(--blue); stroke-width:2; }
+  .line-chart-svg .line-holdings { fill:none; stroke:var(--green); stroke-width:1.5; stroke-dasharray:4,3; }
+  .line-chart-svg .chart-dot { cursor:pointer; }
 </style>
 </head>
 <body>
@@ -551,20 +611,18 @@ Respond ONLY with valid JSON (no markdown fences, no extra text) matching this s
 }
 
 async function _callAnthropic(key, model, system, user) {
-  const m = model || 'claude-opus-4-6';
+  const m = model || 'claude-sonnet-4-6';
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': key,
       'anthropic-version': '2023-06-01',
-      'anthropic-beta': 'interleaved-thinking-2025-05-14',
       'anthropic-dangerous-direct-browser-access': 'true',
       'content-type': 'application/json',
     },
     body: JSON.stringify({
       model: m,
-      max_tokens: 12000,
-      thinking: { type: 'enabled', budget_tokens: 8000 },
+      max_tokens: 4096,
       system,
       messages: [{ role: 'user', content: user }],
     }),
@@ -628,22 +686,36 @@ async function runAiAnalysis() {
   btn.innerHTML = '<span class="ai-spinner"></span>Analyzing\u2026';
   out.innerHTML = '';
 
-  try {
-    const { system, user } = buildPrompt();
-    let text;
-    if      (ai.provider === 'anthropic') text = await _callAnthropic(ai.api_key, ai.model, system, user);
-    else if (ai.provider === 'openai')    text = await _callOpenAI(ai.api_key, ai.model, system, user);
-    else if (ai.provider === 'gemini')    text = await _callGemini(ai.api_key, ai.model, system, user);
+  const { system, user } = buildPrompt();
+  const callProvider = () => {
+    if      (ai.provider === 'anthropic') return _callAnthropic(ai.api_key, ai.model, system, user);
+    else if (ai.provider === 'openai')    return _callOpenAI(ai.api_key, ai.model, system, user);
+    else if (ai.provider === 'gemini')    return _callGemini(ai.api_key, ai.model, system, user);
     else throw new Error('Unknown provider: ' + ai.provider);
+  };
 
-    text = text.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '');
-    renderAiResult(JSON.parse(text));
-  } catch (err) {
-    out.innerHTML = '<div class="ai-error"><strong>Analysis failed:</strong> ' + esc(err.message) + '</div>';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Regenerate';
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (attempt > 0) {
+        btn.innerHTML = `<span class="ai-spinner"></span>Retrying (${attempt}/2)\u2026`;
+        await new Promise(r => setTimeout(r, 1500 * attempt));
+      }
+      let text = await callProvider();
+      text = text.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '');
+      renderAiResult(JSON.parse(text));
+      lastErr = null;
+      break;
+    } catch (err) {
+      lastErr = err;
+    }
   }
+  if (lastErr) {
+    out.innerHTML = '<div class="ai-error"><strong>Analysis failed:</strong> ' + esc(lastErr.message) + '</div>';
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Regenerate';
 }
 
 function renderAiResult(r) {
@@ -684,6 +756,213 @@ function renderAiResult(r) {
     + '<div class="rec-list">' + recsHtml + '</div>';
 }
 
+function renderPerformanceChart(container) {
+  if (!container) return;
+  const snaps = D.snapshots || [];
+  if (snaps.length < 2) {
+    container.innerHTML = '<p style="color:var(--text2);padding:24px 0;text-align:center">'
+      + 'No history yet — open the dashboard daily or run '
+      + '<code style="background:var(--surface2);padding:1px 5px;border-radius:3px">pt snapshot take '
+      + D.portfolio_id + '</code> to start tracking.</p>';
+    return;
+  }
+
+  const W = 560, H = 220, PAD = { top: 16, right: 16, bottom: 36, left: 72 };
+  const iW = W - PAD.left - PAD.right;
+  const iH = H - PAD.top - PAD.bottom;
+  const ns = 'http://www.w3.org/2000/svg';
+
+  const dates  = snaps.map(s => new Date(s.date).getTime());
+  const minT = Math.min(...dates), maxT = Math.max(...dates);
+  const allV  = snaps.flatMap(s => [Number(s.total_value), Number(s.holdings_value)]);
+  const minV = Math.min(...allV) * 0.98, maxV = Math.max(...allV) * 1.02;
+  const xS = t => (t - minT) / (maxT - minT || 1) * iW;
+  const yS = v => iH - (v - minV) / (maxV - minV || 1) * iH;
+
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('class', 'line-chart-svg');
+  const g = document.createElementNS(ns, 'g');
+  g.setAttribute('transform', `translate(${PAD.left},${PAD.top})`);
+
+  // Y grid + labels
+  for (let i = 0; i <= 4; i++) {
+    const v = minV + (maxV - minV) * i / 4;
+    const y = yS(v);
+    const gl = document.createElementNS(ns, 'line');
+    gl.setAttribute('x1', 0); gl.setAttribute('x2', iW);
+    gl.setAttribute('y1', y); gl.setAttribute('y2', y);
+    gl.setAttribute('class', i === 0 ? 'axis-line' : 'grid-line');
+    g.appendChild(gl);
+    const lbl = document.createElementNS(ns, 'text');
+    lbl.setAttribute('x', -6); lbl.setAttribute('y', y);
+    lbl.setAttribute('class', 'axis-label');
+    lbl.setAttribute('text-anchor', 'end');
+    lbl.setAttribute('dominant-baseline', 'middle');
+    lbl.textContent = '€' + fmt(v, 0);
+    g.appendChild(lbl);
+  }
+
+  // Lines
+  function makeLine(key, cls) {
+    const pts = snaps.map(s => `${xS(new Date(s.date).getTime())},${yS(Number(s[key]))}`).join(' ');
+    const pl = document.createElementNS(ns, 'polyline');
+    pl.setAttribute('points', pts); pl.setAttribute('class', cls);
+    g.appendChild(pl);
+  }
+  makeLine('holdings_value', 'line-holdings');
+  makeLine('total_value',    'line-total');
+
+  // Tooltip
+  const tooltip = document.createElement('div');
+  tooltip.className = 'tooltip';
+  container.style.position = 'relative';
+  container.appendChild(tooltip);
+
+  // Interactive dots on total_value
+  snaps.forEach(s => {
+    const x = xS(new Date(s.date).getTime()), y = yS(Number(s.total_value));
+    const c = document.createElementNS(ns, 'circle');
+    c.setAttribute('cx', x); c.setAttribute('cy', y); c.setAttribute('r', 3);
+    c.setAttribute('fill', 'var(--blue)'); c.setAttribute('class', 'chart-dot');
+    c.addEventListener('mouseenter', () => {
+      tooltip.innerHTML = `<strong>${s.date}</strong><br>Total: €${fmt(s.total_value)}<br>Holdings: €${fmt(s.holdings_value)}<br>Cash: €${fmt(s.cash_balance)}`;
+      tooltip.style.opacity = '1';
+    });
+    c.addEventListener('mousemove', ev => {
+      const r = container.getBoundingClientRect();
+      tooltip.style.left = (ev.clientX - r.left + 12) + 'px';
+      tooltip.style.top  = (ev.clientY - r.top  - 60) + 'px';
+    });
+    c.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
+    g.appendChild(c);
+  });
+
+  // X axis date labels (up to 6)
+  const step = Math.max(1, Math.floor((snaps.length - 1) / 5));
+  for (let i = 0; i < snaps.length; i += step) {
+    const x = xS(new Date(snaps[i].date).getTime());
+    const lbl = document.createElementNS(ns, 'text');
+    lbl.setAttribute('x', x); lbl.setAttribute('y', iH + 18);
+    lbl.setAttribute('class', 'axis-label'); lbl.setAttribute('text-anchor', 'middle');
+    lbl.textContent = snaps[i].date.slice(5); // MM-DD
+    g.appendChild(lbl);
+  }
+
+  svg.appendChild(g);
+  container.insertBefore(svg, tooltip);
+
+  // Legend
+  const leg = document.createElement('div');
+  leg.style.cssText = 'display:flex;gap:16px;margin-top:10px;font-size:12px';
+  leg.innerHTML = '<span><span style="display:inline-block;width:14px;height:3px;background:var(--blue);vertical-align:middle;margin-right:4px;border-radius:2px"></span>Total</span>'
+    + '<span><span style="display:inline-block;width:14px;height:3px;background:var(--green);vertical-align:middle;margin-right:4px;border-radius:2px"></span>Holdings</span>';
+  container.appendChild(leg);
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach(p =>
+    p.classList.toggle('active', p.id === 'tab-' + name));
+}
+
+const COL_KEYS = ['ticker','name','asset_type','tfs_rate','shares',
+                  'cost_basis','current_price','current_value','pnl','pnl_pct','weight'];
+let sortState = { col: 7, asc: false };
+let filterQuery = '';
+
+function sortTable(col, type) {
+  sortState = { col, asc: sortState.col === col ? !sortState.asc : type === 'str' };
+  document.querySelectorAll('.sort-arrow').forEach(el => el.textContent = '');
+  const arrow = document.getElementById('sa-' + col);
+  if (arrow) arrow.textContent = sortState.asc ? '▲' : '▼';
+  const key = COL_KEYS[col];
+  D.holdings.sort((a, b) => {
+    let va = a[key], vb = b[key];
+    if (type === 'str') { va = String(va||'').toLowerCase(); vb = String(vb||'').toLowerCase(); }
+    else { va = Number(va||0); vb = Number(vb||0); }
+    return sortState.asc ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
+  });
+  renderHoldingsTbody();
+}
+
+function filterTable(q) {
+  filterQuery = q.toLowerCase();
+  const rows = document.querySelectorAll('#holdings-tbody tr');
+  let shown = 0;
+  rows.forEach(row => {
+    const match = !filterQuery
+      || row.dataset.ticker.toLowerCase().includes(filterQuery)
+      || row.dataset.name.toLowerCase().includes(filterQuery);
+    row.style.display = match ? '' : 'none';
+    if (match) shown++;
+  });
+  const el = document.getElementById('holdings-count');
+  if (el) el.textContent = filterQuery
+    ? `${shown} of ${D.holdings.length} holdings` : `${D.holdings.length} holdings`;
+}
+
+function renderHoldingsTbody() {
+  const tbody = document.getElementById('holdings-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = D.holdings.map(h => {
+    const pc = Number(h.pnl) >= 0 ? 'positive' : 'negative';
+    const tfsCell = h.tfs_rate > 0
+      ? `<span class="tfs-badge">${(h.tfs_rate*100).toFixed(0)}%</span>` : '—';
+    return `<tr data-ticker="${esc(h.ticker||'')}" data-name="${esc(h.name||h.isin||'')}">
+      <td style="font-weight:600">${esc(h.ticker)||'—'}</td>
+      <td style="color:var(--text2);font-size:13px">${esc(h.name||h.isin)}</td>
+      <td>${esc(h.asset_type)}</td>
+      <td class="num">${tfsCell}</td>
+      <td class="num">${fmt(h.shares,4)}</td>
+      <td class="num">${fmt(h.cost_basis)}</td>
+      <td class="num">${h.current_price?fmt(h.current_price,4):'—'}</td>
+      <td class="num" style="font-weight:600">${fmt(h.current_value)}</td>
+      <td class="num ${pc}">${fmt(h.pnl)}</td>
+      <td class="num ${pc}">${fmtPct(h.pnl_pct)}</td>
+      <td class="num">${fmt(h.weight,1)}%</td>
+    </tr>`;
+  }).join('');
+  if (filterQuery) filterTable(filterQuery);
+  else {
+    const el = document.getElementById('holdings-count');
+    if (el) el.textContent = `${D.holdings.length} holdings`;
+  }
+}
+
+function renderPnlChart(container) {
+  if (!container) return;
+  const items = [...D.holdings].sort((a,b) => Number(b.pnl_pct) - Number(a.pnl_pct));
+  const maxAbs = Math.max(...items.map(h => Math.abs(Number(h.pnl_pct))), 0.01);
+  container.innerHTML = items.map(h => {
+    const pct = Number(h.pnl_pct);
+    const w = Math.abs(pct) / maxAbs * 100;
+    const color = pct >= 0 ? 'var(--green)' : 'var(--red)';
+    const cls   = pct >= 0 ? 'positive' : 'negative';
+    return `<div class="pnl-row">
+      <div class="pnl-label">${esc(h.ticker||h.isin.slice(0,6))}</div>
+      <div class="pnl-bar-bg"><div class="pnl-bar-fill" style="width:${w}%;background:${color}"></div></div>
+      <div class="pnl-val ${cls}">${fmtPct(pct)}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderFsaBar(container) {
+  if (!container) return;
+  const used  = Number(D.tax.freistellungsauftrag_used);
+  const total = Number(D.freistellungsauftrag) || 1000;
+  const pct   = Math.min(used / total * 100, 100);
+  const color = pct < 70 ? 'var(--green)' : pct < 95 ? 'var(--amber)' : 'var(--red)';
+  container.innerHTML = `
+    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px">
+      <span>Used: <strong>${fmt(used)} €</strong></span>
+      <span style="color:var(--text2)">of ${fmt(total)} €</span>
+    </div>
+    <div class="fsa-bar-wrap"><div class="fsa-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+    <div style="font-size:12px;color:var(--text2);margin-top:6px">${fmt(total - used)} € remaining</div>`;
+}
+
 function render() {
   const app = document.getElementById('app');
   const s = D.summary;
@@ -708,67 +987,87 @@ function render() {
       <div class="kpi"><div class="label">Holdings</div><div class="value">${s.holdings_count}</div></div>
     </div>
 
-    <div class="charts-row">
-      <div class="card"><h2>Allocation by Holding</h2><div id="chart-holding" class="chart-container"></div></div>
-      <div class="card"><h2>Allocation by Type</h2><div id="chart-type" class="chart-container"></div></div>
+    <div class="tab-nav">
+      <button class="tab-btn active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
+      <button class="tab-btn" data-tab="holdings" onclick="switchTab('holdings')">Holdings</button>
+      <button class="tab-btn" data-tab="tax" onclick="switchTab('tax')">Tax</button>
+      <button class="tab-btn" data-tab="rebalancing" onclick="switchTab('rebalancing')">Rebalancing</button>
+      <button class="tab-btn" data-tab="analysis" onclick="switchTab('analysis')">AI Analysis</button>
     </div>
 
-    <div class="card" style="margin-bottom:32px">
-      <h2>Holdings</h2>
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            <th>Ticker</th><th>Name</th><th>Type</th><th class="num">TFS%</th>
-            <th class="num">Shares</th><th class="num">Cost&nbsp;€</th>
-            <th class="num">Price&nbsp;€</th><th class="num">Value&nbsp;€</th>
-            <th class="num">P&amp;L&nbsp;€</th><th class="num">P&amp;L&nbsp;%</th>
-            <th class="num">Weight</th>
-          </tr></thead>
-          <tbody>
-            ${D.holdings.map(h => {
-              const pc = Number(h.pnl) >= 0 ? 'positive' : 'negative';
-              const tfsCell = h.tfs_rate > 0 ? `<span class="tfs-badge">${(h.tfs_rate*100).toFixed(0)}%</span>` : '—';
-              return `<tr>
-                <td style="font-weight:600">${esc(h.ticker)||'—'}</td>
-                <td style="color:var(--text2);font-size:13px">${esc(h.name||h.isin)}</td>
-                <td>${esc(h.asset_type)}</td>
-                <td class="num">${tfsCell}</td>
-                <td class="num">${fmt(h.shares,4)}</td>
-                <td class="num">${fmt(h.cost_basis)}</td>
-                <td class="num">${h.current_price?fmt(h.current_price,4):'—'}</td>
-                <td class="num" style="font-weight:600">${fmt(h.current_value)}</td>
-                <td class="num ${pc}">${fmt(h.pnl)}</td>
-                <td class="num ${pc}">${fmtPct(h.pnl_pct)}</td>
-                <td class="num">${fmt(h.weight,1)}%</td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
+    <div id="tab-overview" class="tab-panel active">
+      <div class="charts-row">
+        <div class="card"><h2>Allocation by Holding</h2><div id="chart-holding" class="chart-container"></div></div>
+        <div class="card"><h2>Allocation by Type</h2><div id="chart-type" class="chart-container"></div></div>
+      </div>
+      <div class="card" style="margin-bottom:32px">
+        <h2>P&amp;L by Holding</h2>
+        <div id="chart-pnl"></div>
+      </div>
+      <div class="card" style="margin-bottom:32px">
+        <h2>Portfolio Value Over Time</h2>
+        <div id="chart-history"></div>
       </div>
     </div>
 
-    <div id="realized-section"></div>
+    <div id="tab-holdings" class="tab-panel">
+      <div class="card" style="margin-bottom:32px">
+        <h2>Holdings</h2>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+          <input id="holdings-filter" type="text" class="filter-input"
+                 placeholder="Filter by ticker or name…" oninput="filterTable(this.value)">
+          <span id="holdings-count" style="color:var(--text2);font-size:13px"></span>
+        </div>
+        <div class="table-wrap">
+          <table id="holdings-table">
+            <thead><tr>
+              <th class="sortable-th" onclick="sortTable(0,'str')">Ticker <span class="sort-arrow" id="sa-0"></span></th>
+              <th class="sortable-th" onclick="sortTable(1,'str')">Name <span class="sort-arrow" id="sa-1"></span></th>
+              <th class="sortable-th" onclick="sortTable(2,'str')">Type <span class="sort-arrow" id="sa-2"></span></th>
+              <th class="sortable-th num" onclick="sortTable(3,'num')">TFS% <span class="sort-arrow" id="sa-3"></span></th>
+              <th class="sortable-th num" onclick="sortTable(4,'num')">Shares <span class="sort-arrow" id="sa-4"></span></th>
+              <th class="sortable-th num" onclick="sortTable(5,'num')">Cost&nbsp;€ <span class="sort-arrow" id="sa-5"></span></th>
+              <th class="sortable-th num" onclick="sortTable(6,'num')">Price&nbsp;€ <span class="sort-arrow" id="sa-6"></span></th>
+              <th class="sortable-th num" onclick="sortTable(7,'num')">Value&nbsp;€ <span class="sort-arrow" id="sa-7">▼</span></th>
+              <th class="sortable-th num" onclick="sortTable(8,'num')">P&amp;L&nbsp;€ <span class="sort-arrow" id="sa-8"></span></th>
+              <th class="sortable-th num" onclick="sortTable(9,'num')">P&amp;L&nbsp;% <span class="sort-arrow" id="sa-9"></span></th>
+              <th class="sortable-th num" onclick="sortTable(10,'num')">Weight <span class="sort-arrow" id="sa-10"></span></th>
+            </tr></thead>
+            <tbody id="holdings-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
-    <div class="charts-row">
-      <div class="card">
+    <div id="tab-tax" class="tab-panel">
+      <div class="card" style="margin-bottom:32px">
+        <h2>Freistellungsauftrag <span style="opacity:0.5;font-size:13px;font-weight:400">(tax-free allowance)</span></h2>
+        <div id="fsa-bar"></div>
+      </div>
+      <div class="charts-row">
+        <div class="card"><h2>Tax Summary (Germany)</h2><div id="tax"></div></div>
+        <div id="realized-section"></div>
+      </div>
+    </div>
+
+    <div id="tab-rebalancing" class="tab-panel">
+      <div class="card" style="margin-bottom:32px">
         <h2>Target vs Actual</h2>
         <div id="deviations"></div>
       </div>
-      <div class="card">
-        <h2>Tax Summary (Germany)</h2>
-        <div id="tax"></div>
-      </div>
     </div>
 
-    <div class="card" id="ai-card" style="margin-bottom:32px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px">
-        <div>
-          <h2 style="font-size:18px;font-weight:600;margin-bottom:0">AI Analysis</h2>
-          <span style="font-size:12px;color:var(--text2)" id="ai-provider-label"></span>
+    <div id="tab-analysis" class="tab-panel">
+      <div class="card" id="ai-card" style="margin-bottom:32px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h2 style="font-size:18px;font-weight:600;margin-bottom:0">AI Analysis</h2>
+            <span style="font-size:12px;color:var(--text2)" id="ai-provider-label"></span>
+          </div>
+          <button class="ai-btn" id="ai-btn" onclick="runAiAnalysis()">Generate Analysis</button>
         </div>
-        <button class="ai-btn" id="ai-btn" onclick="runAiAnalysis()">Generate Analysis</button>
+        <div id="ai-output"></div>
       </div>
-      <div id="ai-output"></div>
     </div>
 
     <div style="text-align:center;padding:24px 0;color:var(--text2);font-size:12px">
@@ -889,6 +1188,12 @@ function render() {
       </div>
     </div>`;
   }
+
+  // Populate tab-specific content
+  renderHoldingsTbody();
+  renderPnlChart(document.getElementById('chart-pnl'));
+  renderFsaBar(document.getElementById('fsa-bar'));
+  renderPerformanceChart(document.getElementById('chart-history'));
 }
 
 render();
@@ -900,7 +1205,7 @@ render();
 @app.command("open")
 def open_dashboard(
     portfolio_id: int = typer.Argument(..., help="Portfolio ID"),
-    output: str = typer.Option("", "--output", "-o", help="Save HTML to this path instead of temp file"),
+    output: str = typer.Option("", "--output", "-o", help="Save HTML to this path (skips browser)"),
 ):
     """Generate and open a web dashboard for a portfolio."""
     portfolios_repo = PortfoliosRepository()
@@ -909,6 +1214,15 @@ def open_dashboard(
         console.print(f"[red]Portfolio {portfolio_id} not found[/red]")
         raise typer.Exit(1)
 
+    # Auto-snapshot: record today's state before collecting dashboard data
+    try:
+        from ...data.repositories.snapshots_repo import take_snapshot_for_portfolio
+        snap = take_snapshot_for_portfolio(portfolio_id)
+        if snap.holdings_value > 0:
+            console.print(f"[dim]Snapshot recorded for {snap.date}[/dim]")
+    except Exception:
+        pass  # never let snapshot failure break the dashboard
+
     console.print(f"[cyan]Collecting data for '{portfolio.name}'...[/cyan]")
     portfolio_data = _collect_data(portfolio_id)
 
@@ -916,12 +1230,33 @@ def open_dashboard(
     html = DASHBOARD_HTML.replace("__DATA_PLACEHOLDER__", data_json)
 
     if output:
-        out_path = Path(output)
-    else:
-        out_path = Path(tempfile.gettempdir()) / f"portfolio-dashboard-{secrets.token_hex(8)}.html"
+        Path(output).write_text(html, encoding="utf-8")
+        console.print(f"[green]Dashboard saved to {output}[/green]")
+        return
 
-    out_path.write_text(html, encoding="utf-8")
-    console.print(f"[green]Dashboard saved to {out_path}[/green]")
+    # Serve via local HTTP so the browser can make API calls (file:// blocks cross-origin fetch)
+    html_bytes = html.encode("utf-8")
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
 
-    webbrowser.open(f"file://{out_path.resolve()}")
-    console.print("[green]Opened in browser![/green]")
+    class _Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(html_bytes)))
+            self.end_headers()
+            self.wfile.write(html_bytes)
+
+        def log_message(self, *args):
+            pass
+
+    url = f"http://127.0.0.1:{port}/"
+    with socketserver.TCPServer(("127.0.0.1", port), _Handler) as httpd:
+        webbrowser.open(url)
+        console.print(f"[green]Dashboard: {url}[/green]")
+        console.print("[dim]Press Ctrl+C to stop[/dim]")
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            console.print("\n[dim]Server stopped.[/dim]")

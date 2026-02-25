@@ -10,6 +10,7 @@ Usage:
 from .returns import (
     allocation_by_isin,
     allocation_by_type,
+    calculate_twr,
     total_cost_basis,
     total_unrealized_pnl,
     total_value,
@@ -21,4 +22,5 @@ __all__ = [
     "total_unrealized_pnl",
     "allocation_by_type",
     "allocation_by_isin",
+    "calculate_twr",
 ]
