@@ -53,7 +53,8 @@ data/
 
 ## Database
 
-SQLite at project root (`portfolio.db`), checked into git as backup.
+SQLite at project root (`portfolio.db`). **Not tracked in git**
+(contains real financial data — gitignored).
 
 ### Tables
 - `portfolios` — name, description
@@ -156,6 +157,35 @@ Canonical allocation — updated 2026-02-24. Not yet funded (pending Revolut liq
 All funds are accumulating. Strategy: core (VWCE) + semiconductor satellite (VVSM) + healthcare (HEAL) + bond buffer (VAGF). XAIX was considered and dropped — overlaps with VWCE tech + VVSM.
 
 Stored in `target_allocations` table for portfolio ID 1, keyed by ISIN. See `AGENTS.md` for full rationale and SQL to update.
+
+## Security & Privacy
+
+### Gitignored files (never commit)
+- `portfolio.db` — real transaction history
+- `config.json` — user name + tax settings
+- `data/*.csv` — raw broker exports
+
+All three exist locally but are excluded from git.
+History was purged via `git filter-repo` (2026-02-25)
+after they were accidentally committed.
+
+### How to purge a file from git history
+```bash
+pip install git-filter-repo
+git filter-repo --path <file> --invert-paths --force
+git remote add origin <url>   # filter-repo removes remote
+git push --force origin master
+```
+
+### Configuration
+User-specific settings (FSA amount, tax rates, name)
+live in `config.json` at project root.
+Read via `get_config()` in `core/config.py`.
+Set interactively with `pt setup run`.
+
+Dashboard reads `freistellungsauftrag` from config
+(not hardcoded) — passed as `D.freistellungsauftrag`
+in the JSON data blob.
 
 ## Future Plans
 

@@ -3,7 +3,7 @@
 import typer
 
 from ..data.database import get_db
-from .commands import cash, dashboard, holdings, portfolio, prices, rebalance, setup, stats, tax, transactions
+from .commands import cash, dashboard, holdings, import_cmd, portfolio, prices, rebalance, setup, stats, tax, transactions
 
 app = typer.Typer(
     name="pt",
@@ -22,6 +22,7 @@ app.add_typer(rebalance.app, name="rebalance", help="Target allocation & rebalan
 app.add_typer(tax.app, name="tax", help="Tax reporting (FIFO lots, realized gains)")
 app.add_typer(dashboard.app, name="dashboard", help="Web dashboard")
 app.add_typer(setup.app, name="setup", help="Interactive setup wizard")
+app.add_typer(import_cmd.app, name="import", help="Import from broker CSV exports")
 
 
 @app.callback()

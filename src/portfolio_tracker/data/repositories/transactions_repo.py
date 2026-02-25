@@ -18,25 +18,47 @@ class TransactionsRepository:
         transaction_date: datetime,
         notes: str = "",
         realized_gain: Optional[Decimal] = None,
-    ) -> Transaction:
+        source_id: Optional[str] = None,
+    ) -> Optional[Transaction]:
         db = get_db()
         total_value = str(quantity * price)
-        cursor = db.conn.execute(
-            """INSERT INTO transactions
-               (holding_id, transaction_type, quantity, price, total_value, realized_gain,
-                transaction_date, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                holding_id,
-                transaction_type.value,
-                str(quantity),
-                str(price),
-                total_value,
-                str(realized_gain) if realized_gain is not None else None,
-                transaction_date.isoformat(),
-                notes,
-            ),
-        )
+        if source_id is not None:
+            cursor = db.conn.execute(
+                """INSERT OR IGNORE INTO transactions
+                   (holding_id, transaction_type, quantity, price, total_value, realized_gain,
+                    transaction_date, notes, source_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    holding_id,
+                    transaction_type.value,
+                    str(quantity),
+                    str(price),
+                    total_value,
+                    str(realized_gain) if realized_gain is not None else None,
+                    transaction_date.isoformat(),
+                    notes,
+                    source_id,
+                ),
+            )
+            if cursor.rowcount == 0:
+                return None
+        else:
+            cursor = db.conn.execute(
+                """INSERT INTO transactions
+                   (holding_id, transaction_type, quantity, price, total_value, realized_gain,
+                    transaction_date, notes)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    holding_id,
+                    transaction_type.value,
+                    str(quantity),
+                    str(price),
+                    total_value,
+                    str(realized_gain) if realized_gain is not None else None,
+                    transaction_date.isoformat(),
+                    notes,
+                ),
+            )
         if not db._in_transaction:
             db.conn.commit()
         return self.get_by_id(cursor.lastrowid)

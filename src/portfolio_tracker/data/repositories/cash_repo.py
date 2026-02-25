@@ -16,20 +16,38 @@ class CashRepository:
         amount: Decimal,
         transaction_date: datetime,
         description: str = "",
-    ) -> CashTransaction:
+        source_id: Optional[str] = None,
+    ) -> Optional[CashTransaction]:
         db = get_db()
-        cursor = db.conn.execute(
-            """INSERT INTO cash_transactions
-               (portfolio_id, cash_type, amount, transaction_date, description)
-               VALUES (?, ?, ?, ?, ?)""",
-            (
-                portfolio_id,
-                cash_type.value,
-                str(amount),
-                transaction_date.isoformat(),
-                description,
-            ),
-        )
+        if source_id is not None:
+            cursor = db.conn.execute(
+                """INSERT OR IGNORE INTO cash_transactions
+                   (portfolio_id, cash_type, amount, transaction_date, description, source_id)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    portfolio_id,
+                    cash_type.value,
+                    str(amount),
+                    transaction_date.isoformat(),
+                    description,
+                    source_id,
+                ),
+            )
+            if cursor.rowcount == 0:
+                return None
+        else:
+            cursor = db.conn.execute(
+                """INSERT INTO cash_transactions
+                   (portfolio_id, cash_type, amount, transaction_date, description)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (
+                    portfolio_id,
+                    cash_type.value,
+                    str(amount),
+                    transaction_date.isoformat(),
+                    description,
+                ),
+            )
         if not db._in_transaction:
             db.conn.commit()
         return self.get_by_id(cursor.lastrowid)

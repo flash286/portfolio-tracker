@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+DEPRECATED: use `pt import revolut <file>` instead. Kept for reference.
+
 Import Revolut portfolio from CSV exports.
 
 Reads:

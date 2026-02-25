@@ -117,6 +117,17 @@ _COLUMN_MIGRATIONS = [
      "ALTER TABLE holdings ADD COLUMN teilfreistellung_rate TEXT NOT NULL DEFAULT '0'"),
     ("transactions", "realized_gain",
      "ALTER TABLE transactions ADD COLUMN realized_gain TEXT DEFAULT NULL"),
+    ("transactions", "source_id",
+     "ALTER TABLE transactions ADD COLUMN source_id TEXT DEFAULT NULL"),
+    ("cash_transactions", "source_id",
+     "ALTER TABLE cash_transactions ADD COLUMN source_id TEXT DEFAULT NULL"),
+    # Unique indices for source_id — must run after the columns are added above
+    ("__index__", "idx_transactions_source_id",
+     "CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_source_id "
+     "ON transactions(source_id) WHERE source_id IS NOT NULL"),
+    ("__index__", "idx_cash_tx_source_id",
+     "CREATE UNIQUE INDEX IF NOT EXISTS idx_cash_tx_source_id "
+     "ON cash_transactions(source_id) WHERE source_id IS NOT NULL"),
 ]
 
 
