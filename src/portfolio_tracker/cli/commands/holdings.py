@@ -6,7 +6,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from ...core.models import AssetType
+from ...core.models import AssetType, Holding
 from ...data.repositories.cash_repo import CashRepository
 from ...data.repositories.holdings_repo import HoldingsRepository
 from ...data.repositories.portfolios_repo import PortfoliosRepository
@@ -64,8 +64,10 @@ def add(
         console.print(f"[yellow]{isin} already exists in this portfolio (ID: {existing.id})[/yellow]")
         return
 
-    h = repo.create(portfolio_id, isin, AssetType(asset_type), name=name, ticker=ticker,
-                    teilfreistellung_rate=tfs_decimal)
+    h = repo.create(Holding(
+        portfolio_id=portfolio_id, isin=isin, asset_type=AssetType(asset_type),
+        name=name, ticker=ticker, teilfreistellung_rate=tfs_decimal,
+    ))
     tfs_info = f"  TFS: {tfs_decimal * 100:.0f}%" if tfs_decimal > 0 else ""
     console.print(f"[green]Added {_display_name(h)} ({h.asset_type.value}) to '{p.name}' (Holding ID: {h.id})[/green]{tfs_info}")
 

@@ -1,10 +1,12 @@
 """Price fetching commands."""
 
+from datetime import datetime
+
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from ...core.models import AssetType
+from ...core.models import AssetType, PricePoint
 from ...data.repositories.holdings_repo import HoldingsRepository
 from ...data.repositories.portfolios_repo import PortfoliosRepository
 from ...data.repositories.prices_repo import PricesRepository
@@ -83,7 +85,9 @@ def fetch(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
         price = prices_by_id.get(h.id)
         if price is not None:
             source = "coingecko" if h.asset_type == AssetType.CRYPTO else "yfinance"
-            prices_repo.store_price(h.id, price, source=source)
+            prices_repo.store_price(PricePoint(
+                holding_id=h.id, price=price, fetch_date=datetime.now(), source=source,
+            ))
             table.add_row(h.isin, h.name or h.ticker or "—", h.asset_type.value, f"{price:,.4f}", "[green]OK[/green]")
         else:
             table.add_row(h.isin, h.name or h.ticker or "—", h.asset_type.value, "—", "[red]FAILED[/red]")

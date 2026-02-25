@@ -7,7 +7,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from ...core.models import AssetType, CashTransactionType, TransactionType
+from ...core.models import AssetType, CashTransaction, CashTransactionType, TaxLot, TargetAllocation, Transaction, TransactionType
 from ...core.rebalancer import Rebalancer
 from ...data.database import get_db
 from ...data.repositories.cash_repo import CashRepository
@@ -103,7 +103,10 @@ def set_targets(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
             return
 
     for atype, pct, threshold in new_targets:
-        targets_repo.set_target(portfolio_id, atype, pct, threshold)
+        targets_repo.set_target(TargetAllocation(
+            portfolio_id=portfolio_id, asset_type=atype,
+            target_percentage=pct, rebalance_threshold=threshold,
+        ))
 
     console.print(f"\n[green]Target allocations saved for '{p.name}'[/green]")
 
@@ -257,16 +260,23 @@ def execute(
                 continue
 
             if t.action == TransactionType.BUY:
-                tx = tx_repo.create(h.id, t.action, t.shares, t.current_price, now,
-                                    f"Rebalance: {t.reason}")
-                lots_repo.create(h.id, now, t.shares, t.current_price,
-                                 buy_transaction_id=tx.id)
+                tx = tx_repo.create(Transaction(
+                    holding_id=h.id, transaction_type=t.action,
+                    quantity=t.shares, price=t.current_price,
+                    transaction_date=now, notes=f"Rebalance: {t.reason}",
+                ))
+                lots_repo.create(TaxLot(
+                    holding_id=h.id, acquired_date=now,
+                    quantity=t.shares, cost_per_unit=t.current_price,
+                    quantity_remaining=t.shares, buy_transaction_id=tx.id,
+                ))
                 new_shares = h.shares + t.shares
                 new_cost = h.cost_basis + t.trade_value
-                cash_repo.create(
-                    portfolio_id, CashTransactionType.BUY, -t.trade_value, now,
+                cash_repo.create(CashTransaction(
+                    portfolio_id=portfolio_id, cash_type=CashTransactionType.BUY,
+                    amount=-t.trade_value, transaction_date=now,
                     description=f"Rebalance: Buy {t.ticker or t.isin}",
-                )
+                ))
             else:  # SELL — FIFO matching
                 open_lots = lots_repo.get_open_lots_fifo(h.id)
                 qty_remaining_temp = t.shares
@@ -281,20 +291,27 @@ def execute(
                     lots_to_consume.append((lot.id, consumed))
                     qty_remaining_temp -= consumed
 
-                tx_repo.create(h.id, t.action, t.shares, t.current_price, now,
-                               f"Rebalance: {t.reason}", realized_gain=realized_gain)
+                tx_repo.create(Transaction(
+                    holding_id=h.id, transaction_type=t.action,
+                    quantity=t.shares, price=t.current_price,
+                    transaction_date=now, notes=f"Rebalance: {t.reason}",
+                    realized_gain=realized_gain,
+                ))
 
                 for lot_id, consumed in lots_to_consume:
                     lots_repo.reduce_lot(lot_id, consumed)
 
                 new_shares = h.shares - t.shares
                 new_cost = lots_repo.get_fifo_cost_basis(h.id)
-                cash_repo.create(
-                    portfolio_id, CashTransactionType.SELL, t.trade_value, now,
+                cash_repo.create(CashTransaction(
+                    portfolio_id=portfolio_id, cash_type=CashTransactionType.SELL,
+                    amount=t.trade_value, transaction_date=now,
                     description=f"Rebalance: Sell {t.ticker or t.isin}",
-                )
+                ))
 
-            holdings_repo.update_shares_and_cost(h.id, new_shares, new_cost)
+            h.shares = new_shares
+            h.cost_basis = new_cost
+            holdings_repo.save(h)
 
     new_balance = cash_repo.get_balance(portfolio_id)
     console.print(f"\n[green]Executed {len(trades)} rebalancing trades.[/green]")

@@ -1,6 +1,5 @@
 """Integration tests for repository CRUD operations."""
 
-import sqlite3
 from datetime import datetime
 from decimal import Decimal
 
@@ -8,7 +7,14 @@ import pytest
 
 from portfolio_tracker.core.models import (
     AssetType,
+    CashTransaction,
     CashTransactionType,
+    Holding,
+    Portfolio,
+    PricePoint,
+    TargetAllocation,
+    TaxLot,
+    Transaction,
     TransactionType,
 )
 from portfolio_tracker.data.repositories.cash_repo import CashRepository
@@ -23,7 +29,7 @@ from portfolio_tracker.data.repositories.transactions_repo import TransactionsRe
 class TestPortfolioRepository:
     def test_create_and_get(self, isolated_db):
         repo = PortfoliosRepository()
-        p = repo.create("My Portfolio", "Test description")
+        p = repo.create(Portfolio(name="My Portfolio", description="Test description"))
 
         assert p.id is not None
         assert p.name == "My Portfolio"
@@ -35,8 +41,8 @@ class TestPortfolioRepository:
 
     def test_get_by_name(self, isolated_db):
         repo = PortfoliosRepository()
-        repo.create("Alpha")
-        repo.create("Beta")
+        repo.create(Portfolio(name="Alpha"))
+        repo.create(Portfolio(name="Beta"))
 
         p = repo.get_by_name("Beta")
         assert p is not None
@@ -47,14 +53,14 @@ class TestPortfolioRepository:
 
     def test_list_all(self, isolated_db):
         repo = PortfoliosRepository()
-        repo.create("A")
-        repo.create("B")
-        repo.create("C")
+        repo.create(Portfolio(name="A"))
+        repo.create(Portfolio(name="B"))
+        repo.create(Portfolio(name="C"))
         assert len(repo.list_all()) == 3
 
     def test_delete(self, isolated_db):
         repo = PortfoliosRepository()
-        p = repo.create("ToDelete")
+        p = repo.create(Portfolio(name="ToDelete"))
         assert repo.delete(p.id) is True
         assert repo.get_by_id(p.id) is None
 
@@ -64,12 +70,15 @@ class TestPortfolioRepository:
 
 class TestHoldingsRepository:
     def _portfolio(self):
-        return PortfoliosRepository().create("Test")
+        return PortfoliosRepository().create(Portfolio(name="Test"))
 
     def test_create_and_get_by_id(self, isolated_db):
         p = self._portfolio()
         repo = HoldingsRepository()
-        h = repo.create(p.id, "IE00B4L5Y983", AssetType.ETF, name="World ETF", ticker="IWDA")
+        h = repo.create(Holding(
+            portfolio_id=p.id, isin="IE00B4L5Y983", asset_type=AssetType.ETF,
+            name="World ETF", ticker="IWDA",
+        ))
 
         assert h.id is not None
         assert h.isin == "IE00B4L5Y983"
@@ -82,8 +91,10 @@ class TestHoldingsRepository:
         """Teilfreistellung rate is stored and retrieved correctly."""
         p = self._portfolio()
         repo = HoldingsRepository()
-        h = repo.create(p.id, "IE00B4L5Y983", AssetType.ETF,
-                        teilfreistellung_rate=Decimal("0.3"))
+        h = repo.create(Holding(
+            portfolio_id=p.id, isin="IE00B4L5Y983", asset_type=AssetType.ETF,
+            teilfreistellung_rate=Decimal("0.3"),
+        ))
         assert h.teilfreistellung_rate == Decimal("0.3")
 
         fetched = repo.get_by_id(h.id)
@@ -91,7 +102,9 @@ class TestHoldingsRepository:
 
     def test_get_by_isin(self, isolated_db):
         p = self._portfolio()
-        HoldingsRepository().create(p.id, "IE00B4L5Y983", AssetType.ETF)
+        HoldingsRepository().create(Holding(
+            portfolio_id=p.id, isin="IE00B4L5Y983", asset_type=AssetType.ETF,
+        ))
         h = HoldingsRepository().get_by_isin(p.id, "IE00B4L5Y983")
         assert h is not None
         assert h.isin == "IE00B4L5Y983"
@@ -100,14 +113,19 @@ class TestHoldingsRepository:
         """Duplicate ISIN in same portfolio raises an integrity error."""
         p = self._portfolio()
         repo = HoldingsRepository()
-        repo.create(p.id, "IE00B4L5Y983", AssetType.ETF)
+        repo.create(Holding(portfolio_id=p.id, isin="IE00B4L5Y983", asset_type=AssetType.ETF))
         with pytest.raises(Exception):  # sqlite3.IntegrityError
-            repo.create(p.id, "IE00B4L5Y983", AssetType.ETF)
+            repo.create(Holding(portfolio_id=p.id, isin="IE00B4L5Y983", asset_type=AssetType.ETF))
 
-    def test_update_shares_and_cost(self, isolated_db):
+    def test_save_updates_holding(self, isolated_db):
+        """save() updates shares and cost_basis correctly."""
         p = self._portfolio()
-        h = HoldingsRepository().create(p.id, "IE00B4L5Y983", AssetType.ETF)
-        HoldingsRepository().update_shares_and_cost(h.id, Decimal("10.5"), Decimal("1050.00"))
+        h = HoldingsRepository().create(Holding(
+            portfolio_id=p.id, isin="IE00B4L5Y983", asset_type=AssetType.ETF,
+        ))
+        h.shares = Decimal("10.5")
+        h.cost_basis = Decimal("1050.00")
+        HoldingsRepository().save(h)
 
         h_after = HoldingsRepository().get_by_id(h.id)
         assert h_after.shares == Decimal("10.5")
@@ -116,9 +134,14 @@ class TestHoldingsRepository:
     def test_delete_cascades_transactions(self, isolated_db):
         """Deleting a holding removes its transactions via CASCADE."""
         p = self._portfolio()
-        h = HoldingsRepository().create(p.id, "IE00B4L5Y983", AssetType.ETF)
+        h = HoldingsRepository().create(Holding(
+            portfolio_id=p.id, isin="IE00B4L5Y983", asset_type=AssetType.ETF,
+        ))
         tx_repo = TransactionsRepository()
-        tx_repo.create(h.id, TransactionType.BUY, Decimal("10"), Decimal("50"), datetime.now())
+        tx_repo.create(Transaction(
+            holding_id=h.id, transaction_type=TransactionType.BUY,
+            quantity=Decimal("10"), price=Decimal("50"), transaction_date=datetime.now(),
+        ))
 
         HoldingsRepository().delete(h.id)
         assert tx_repo.list_by_holding(h.id) == []
@@ -126,12 +149,15 @@ class TestHoldingsRepository:
 
 class TestCashRepository:
     def _portfolio(self):
-        return PortfoliosRepository().create("Test")
+        return PortfoliosRepository().create(Portfolio(name="Test"))
 
     def test_create_and_get(self, isolated_db):
         p = self._portfolio()
         repo = CashRepository()
-        tx = repo.create(p.id, CashTransactionType.TOP_UP, Decimal("1000"), datetime.now())
+        tx = repo.create(CashTransaction(
+            portfolio_id=p.id, cash_type=CashTransactionType.TOP_UP,
+            amount=Decimal("1000"), transaction_date=datetime.now(),
+        ))
 
         assert tx.id is not None
         assert tx.portfolio_id == p.id
@@ -143,10 +169,10 @@ class TestCashRepository:
         repo = CashRepository()
         now = datetime.now()
 
-        repo.create(p.id, CashTransactionType.TOP_UP, Decimal("1000"), now)
-        repo.create(p.id, CashTransactionType.BUY, Decimal("-500"), now)
-        repo.create(p.id, CashTransactionType.DIVIDEND, Decimal("50"), now)
-        repo.create(p.id, CashTransactionType.FEE, Decimal("-10"), now)
+        repo.create(CashTransaction(portfolio_id=p.id, cash_type=CashTransactionType.TOP_UP, amount=Decimal("1000"), transaction_date=now))
+        repo.create(CashTransaction(portfolio_id=p.id, cash_type=CashTransactionType.BUY, amount=Decimal("-500"), transaction_date=now))
+        repo.create(CashTransaction(portfolio_id=p.id, cash_type=CashTransactionType.DIVIDEND, amount=Decimal("50"), transaction_date=now))
+        repo.create(CashTransaction(portfolio_id=p.id, cash_type=CashTransactionType.FEE, amount=Decimal("-10"), transaction_date=now))
 
         assert repo.get_balance(p.id) == Decimal("540")
 
@@ -158,22 +184,24 @@ class TestCashRepository:
         p = self._portfolio()
         repo = CashRepository()
         now = datetime.now()
-        repo.create(p.id, CashTransactionType.TOP_UP, Decimal("100"), now)
-        repo.create(p.id, CashTransactionType.TOP_UP, Decimal("200"), now)
+        repo.create(CashTransaction(portfolio_id=p.id, cash_type=CashTransactionType.TOP_UP, amount=Decimal("100"), transaction_date=now))
+        repo.create(CashTransaction(portfolio_id=p.id, cash_type=CashTransactionType.TOP_UP, amount=Decimal("200"), transaction_date=now))
         assert len(repo.list_by_portfolio(p.id)) == 2
 
 
 class TestPricesRepository:
     def _holding(self):
-        p = PortfoliosRepository().create("Test")
-        return HoldingsRepository().create(p.id, "IE00B4L5Y983", AssetType.ETF)
+        p = PortfoliosRepository().create(Portfolio(name="Test"))
+        return HoldingsRepository().create(Holding(
+            portfolio_id=p.id, isin="IE00B4L5Y983", asset_type=AssetType.ETF,
+        ))
 
     def test_store_and_get_latest(self, isolated_db):
         h = self._holding()
         repo = PricesRepository()
 
-        repo.store_price(h.id, Decimal("100.00"), "test")
-        latest = repo.store_price(h.id, Decimal("110.50"), "test")
+        repo.store_price(PricePoint(holding_id=h.id, price=Decimal("100.00"), fetch_date=datetime.now(), source="test"))
+        latest = repo.store_price(PricePoint(holding_id=h.id, price=Decimal("110.50"), fetch_date=datetime.now(), source="test"))
 
         result = repo.get_latest(h.id)
         assert result.price == Decimal("110.50")
@@ -187,7 +215,7 @@ class TestPricesRepository:
         h = self._holding()
         repo = PricesRepository()
         for price in [100, 105, 110]:
-            repo.store_price(h.id, Decimal(str(price)), "test")
+            repo.store_price(PricePoint(holding_id=h.id, price=Decimal(str(price)), fetch_date=datetime.now(), source="test"))
 
         history = repo.get_history(h.id)
         assert len(history) == 3
@@ -198,12 +226,15 @@ class TestPricesRepository:
 
 class TestTargetsRepository:
     def _portfolio(self):
-        return PortfoliosRepository().create("Test")
+        return PortfoliosRepository().create(Portfolio(name="Test"))
 
     def test_set_and_get(self, isolated_db):
         p = self._portfolio()
         repo = TargetsRepository()
-        t = repo.set_target(p.id, "etf", Decimal("80"), Decimal("5"))
+        t = repo.set_target(TargetAllocation(
+            portfolio_id=p.id, asset_type="etf",
+            target_percentage=Decimal("80"), rebalance_threshold=Decimal("5"),
+        ))
 
         assert t.portfolio_id == p.id
         assert t.asset_type == "etf"
@@ -212,8 +243,8 @@ class TestTargetsRepository:
     def test_upsert_updates_existing(self, isolated_db):
         p = self._portfolio()
         repo = TargetsRepository()
-        repo.set_target(p.id, "etf", Decimal("80"))
-        repo.set_target(p.id, "etf", Decimal("90"))  # update
+        repo.set_target(TargetAllocation(portfolio_id=p.id, asset_type="etf", target_percentage=Decimal("80")))
+        repo.set_target(TargetAllocation(portfolio_id=p.id, asset_type="etf", target_percentage=Decimal("90")))
 
         t = repo.get(p.id, "etf")
         assert t.target_percentage == Decimal("90")
@@ -221,8 +252,8 @@ class TestTargetsRepository:
     def test_list_by_portfolio(self, isolated_db):
         p = self._portfolio()
         repo = TargetsRepository()
-        repo.set_target(p.id, "etf", Decimal("70"))
-        repo.set_target(p.id, "bond", Decimal("30"))
+        repo.set_target(TargetAllocation(portfolio_id=p.id, asset_type="etf", target_percentage=Decimal("70")))
+        repo.set_target(TargetAllocation(portfolio_id=p.id, asset_type="bond", target_percentage=Decimal("30")))
 
         targets = repo.list_by_portfolio(p.id)
         assert len(targets) == 2
@@ -230,21 +261,27 @@ class TestTargetsRepository:
     def test_delete(self, isolated_db):
         p = self._portfolio()
         repo = TargetsRepository()
-        repo.set_target(p.id, "etf", Decimal("100"))
+        repo.set_target(TargetAllocation(portfolio_id=p.id, asset_type="etf", target_percentage=Decimal("100")))
         assert repo.delete(p.id, "etf") is True
         assert repo.get(p.id, "etf") is None
 
 
 class TestLotsRepository:
     def _holding(self):
-        p = PortfoliosRepository().create("Test")
-        return HoldingsRepository().create(p.id, "IE00B4L5Y983", AssetType.ETF)
+        p = PortfoliosRepository().create(Portfolio(name="Test"))
+        return HoldingsRepository().create(Holding(
+            portfolio_id=p.id, isin="IE00B4L5Y983", asset_type=AssetType.ETF,
+        ))
 
     def test_create_and_get(self, isolated_db):
         h = self._holding()
         repo = LotsRepository()
         now = datetime.now()
-        lot = repo.create(h.id, now, Decimal("10"), Decimal("100.00"))
+        lot = repo.create(TaxLot(
+            holding_id=h.id, acquired_date=now,
+            quantity=Decimal("10"), cost_per_unit=Decimal("100.00"),
+            quantity_remaining=Decimal("10"),
+        ))
 
         assert lot.id is not None
         assert lot.holding_id == h.id
@@ -258,9 +295,9 @@ class TestLotsRepository:
         repo = LotsRepository()
         from datetime import timedelta
         base = datetime(2024, 1, 1)
-        repo.create(h.id, base + timedelta(days=30), Decimal("5"), Decimal("110"))
-        repo.create(h.id, base, Decimal("10"), Decimal("100"))  # oldest
-        repo.create(h.id, base + timedelta(days=60), Decimal("3"), Decimal("120"))
+        repo.create(TaxLot(holding_id=h.id, acquired_date=base + timedelta(days=30), quantity=Decimal("5"), cost_per_unit=Decimal("110"), quantity_remaining=Decimal("5")))
+        repo.create(TaxLot(holding_id=h.id, acquired_date=base, quantity=Decimal("10"), cost_per_unit=Decimal("100"), quantity_remaining=Decimal("10")))  # oldest
+        repo.create(TaxLot(holding_id=h.id, acquired_date=base + timedelta(days=60), quantity=Decimal("3"), cost_per_unit=Decimal("120"), quantity_remaining=Decimal("3")))
 
         lots = repo.get_open_lots_fifo(h.id)
         assert len(lots) == 3
@@ -271,7 +308,11 @@ class TestLotsRepository:
     def test_reduce_lot(self, isolated_db):
         h = self._holding()
         repo = LotsRepository()
-        lot = repo.create(h.id, datetime.now(), Decimal("10"), Decimal("100"))
+        lot = repo.create(TaxLot(
+            holding_id=h.id, acquired_date=datetime.now(),
+            quantity=Decimal("10"), cost_per_unit=Decimal("100"),
+            quantity_remaining=Decimal("10"),
+        ))
 
         repo.reduce_lot(lot.id, Decimal("4"))
         updated = repo.get_by_id(lot.id)
@@ -280,7 +321,11 @@ class TestLotsRepository:
     def test_fully_consumed_lot_excluded_from_open(self, isolated_db):
         h = self._holding()
         repo = LotsRepository()
-        lot = repo.create(h.id, datetime.now(), Decimal("10"), Decimal("100"))
+        lot = repo.create(TaxLot(
+            holding_id=h.id, acquired_date=datetime.now(),
+            quantity=Decimal("10"), cost_per_unit=Decimal("100"),
+            quantity_remaining=Decimal("10"),
+        ))
 
         repo.reduce_lot(lot.id, Decimal("10"))
         open_lots = repo.get_open_lots_fifo(h.id)
@@ -291,8 +336,8 @@ class TestLotsRepository:
         h = self._holding()
         repo = LotsRepository()
         now = datetime.now()
-        lot1 = repo.create(h.id, now, Decimal("10"), Decimal("100"))
-        lot2 = repo.create(h.id, now, Decimal("5"), Decimal("120"))
+        lot1 = repo.create(TaxLot(holding_id=h.id, acquired_date=now, quantity=Decimal("10"), cost_per_unit=Decimal("100"), quantity_remaining=Decimal("10")))
+        lot2 = repo.create(TaxLot(holding_id=h.id, acquired_date=now, quantity=Decimal("5"), cost_per_unit=Decimal("120"), quantity_remaining=Decimal("5")))
 
         # Before any reduction: 10*100 + 5*120 = 1600
         assert repo.get_fifo_cost_basis(h.id) == Decimal("1600")
@@ -306,7 +351,11 @@ class TestLotsRepository:
         """list_by_holding returns all lots, including fully consumed."""
         h = self._holding()
         repo = LotsRepository()
-        lot = repo.create(h.id, datetime.now(), Decimal("5"), Decimal("100"))
+        lot = repo.create(TaxLot(
+            holding_id=h.id, acquired_date=datetime.now(),
+            quantity=Decimal("5"), cost_per_unit=Decimal("100"),
+            quantity_remaining=Decimal("5"),
+        ))
         repo.reduce_lot(lot.id, Decimal("5"))  # fully consumed
 
         all_lots = repo.list_by_holding(h.id)
@@ -318,15 +367,17 @@ class TestDecimalStorage:
     """Verify financial values are stored as TEXT (not REAL) to preserve precision."""
 
     def _holding(self):
-        p = PortfoliosRepository().create("Test")
-        return HoldingsRepository().create(p.id, "IE00B4L5Y983", AssetType.ETF)
+        p = PortfoliosRepository().create(Portfolio(name="Test"))
+        return HoldingsRepository().create(Holding(
+            portfolio_id=p.id, isin="IE00B4L5Y983", asset_type=AssetType.ETF,
+        ))
 
     def test_holdings_shares_stored_as_text(self, isolated_db):
         h = self._holding()
-        HoldingsRepository().update_shares_and_cost(
-            h.id, Decimal("10.123456789"), Decimal("1012.34")
-        )
-        import sqlite3 as _sqlite3
+        h.shares = Decimal("10.123456789")
+        h.cost_basis = Decimal("1012.34")
+        HoldingsRepository().save(h)
+
         from portfolio_tracker.data.database import get_db
         db = get_db()
         row = db.conn.execute(
@@ -337,7 +388,9 @@ class TestDecimalStorage:
 
     def test_price_history_stored_as_text(self, isolated_db):
         h = self._holding()
-        PricesRepository().store_price(h.id, Decimal("99.9999"), "test")
+        PricesRepository().store_price(PricePoint(
+            holding_id=h.id, price=Decimal("99.9999"), fetch_date=datetime.now(), source="test",
+        ))
         from portfolio_tracker.data.database import get_db
         db = get_db()
         row = db.conn.execute(
@@ -346,10 +399,11 @@ class TestDecimalStorage:
         assert isinstance(row["price"], str)
 
     def test_cash_transactions_stored_as_text(self, isolated_db):
-        p = PortfoliosRepository().create("Test")
-        CashRepository().create(
-            p.id, CashTransactionType.TOP_UP, Decimal("1000.50"), datetime.now()
-        )
+        p = PortfoliosRepository().create(Portfolio(name="Test"))
+        CashRepository().create(CashTransaction(
+            portfolio_id=p.id, cash_type=CashTransactionType.TOP_UP,
+            amount=Decimal("1000.50"), transaction_date=datetime.now(),
+        ))
         from portfolio_tracker.data.database import get_db
         db = get_db()
         row = db.conn.execute(
@@ -359,9 +413,11 @@ class TestDecimalStorage:
 
     def test_transactions_stored_as_text(self, isolated_db):
         h = self._holding()
-        TransactionsRepository().create(
-            h.id, TransactionType.BUY, Decimal("3.14159"), Decimal("99.99"), datetime.now()
-        )
+        TransactionsRepository().create(Transaction(
+            holding_id=h.id, transaction_type=TransactionType.BUY,
+            quantity=Decimal("3.14159"), price=Decimal("99.99"),
+            transaction_date=datetime.now(),
+        ))
         from portfolio_tracker.data.database import get_db
         db = get_db()
         row = db.conn.execute(

@@ -7,7 +7,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from ...core.models import CashTransactionType
+from ...core.models import CashTransaction, CashTransactionType
 from ...data.repositories.cash_repo import CashRepository
 from ...data.repositories.portfolios_repo import PortfoliosRepository
 
@@ -93,9 +93,11 @@ def add(
         console.print(f"[red]Invalid type '{cash_type}'. Valid: {valid}[/red]")
         raise typer.Exit(1)
 
-    cash_repo.create(
-        portfolio_id, ct, decimal_amount, datetime.now(), description=description,
-    )
+    cash_repo.create(CashTransaction(
+        portfolio_id=portfolio_id, cash_type=ct,
+        amount=decimal_amount, transaction_date=datetime.now(),
+        description=description,
+    ))
     bal = cash_repo.get_balance(portfolio_id)
     console.print(f"[green]✓[/green] Added {ct.value} of €{decimal_amount:,.2f}")
     console.print(f"  New balance: [bold green]€{bal:,.2f}[/bold green]")

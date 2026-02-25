@@ -105,7 +105,12 @@ def portfolio_with_prices(import_result, isolated_db):
     holdings = holdings_repo.list_by_portfolio(import_result.portfolio_id)
     for h in holdings:
         if h.ticker in price_map:
-            prices_repo.store_price(h.id, price_map[h.ticker], source="test")
+            from datetime import datetime
+            from portfolio_tracker.core.models import PricePoint
+            prices_repo.store_price(PricePoint(
+                holding_id=h.id, price=price_map[h.ticker],
+                fetch_date=datetime.now(), source="test",
+            ))
 
     # Attach latest price to each holding (mirrors how CLI commands do it)
     holdings = holdings_repo.list_by_portfolio(import_result.portfolio_id)
