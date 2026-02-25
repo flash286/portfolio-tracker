@@ -1,6 +1,7 @@
 """Dashboard — generate an interactive web dashboard for a portfolio."""
 
 import json
+import secrets
 import tempfile
 import webbrowser
 from datetime import datetime
@@ -328,6 +329,7 @@ const D = window.__PORTFOLIO_DATA__ = __DATA_PLACEHOLDER__;
 const COLORS = ['#3b82f6','#a855f7','#22c55e','#f59e0b','#06b6d4','#ef4444','#ec4899','#8b5cf6','#14b8a6','#f97316','#6366f1','#84cc16'];
 const fmt = (n,d=2) => Number(n).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
 const fmtPct = n => (Number(n)>=0?'+':'') + fmt(n) + '%';
+const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
 function donut(container, items, cx, cy, outerR, innerR) {
   const total = items.reduce((s,i) => s+i.value, 0);
@@ -637,7 +639,7 @@ async function runAiAnalysis() {
     text = text.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '');
     renderAiResult(JSON.parse(text));
   } catch (err) {
-    out.innerHTML = '<div class="ai-error"><strong>Analysis failed:</strong> ' + err.message + '</div>';
+    out.innerHTML = '<div class="ai-error"><strong>Analysis failed:</strong> ' + esc(err.message) + '</div>';
   } finally {
     btn.disabled = false;
     btn.textContent = 'Regenerate';
@@ -650,25 +652,25 @@ function renderAiResult(r) {
   const lvlColor    = { low: 'green', medium: 'amber', high: 'red' };
 
   const winHtml = (r.performance && r.performance.winners || []).map(w =>
-    '<div class="ai-insight green"><strong>' + w.ticker + '</strong>' + w.note + '</div>'
+    '<div class="ai-insight green"><strong>' + esc(w.ticker) + '</strong>' + esc(w.note) + '</div>'
   ).join('');
   const loseHtml = (r.performance && r.performance.losers || []).map(l =>
-    '<div class="ai-insight red"><strong>' + l.ticker + '</strong>' + l.note + '</div>'
+    '<div class="ai-insight red"><strong>' + esc(l.ticker) + '</strong>' + esc(l.note) + '</div>'
   ).join('');
   const riskHtml = (r.risk && r.risk.findings || []).map(f =>
-    '<div class="ai-insight ' + (lvlColor[r.risk && r.risk.level] || 'amber') + '">' + f + '</div>'
+    '<div class="ai-insight ' + (lvlColor[r.risk && r.risk.level] || 'amber') + '">' + esc(f) + '</div>'
   ).join('');
   const recsHtml = (r.recommendations || []).slice().sort((a, b) => a.priority - b.priority).map(rec =>
-    '<div class="rec-item"><span class="rec-num">' + rec.priority + '.</span><span>' + rec.text + '</span></div>'
+    '<div class="rec-item"><span class="rec-num">' + esc(rec.priority) + '.</span><span>' + esc(rec.text) + '</span></div>'
   ).join('');
   const taxColor = (r.tax && r.tax.action_needed) ? 'amber' : 'green';
   const taxTitle = (r.tax && r.tax.action_needed) ? 'Action needed' : 'Tax situation OK';
-  const vpNote   = (r.tax && r.tax.vp_note) ? '<div class="ai-insight blue">' + r.tax.vp_note + '</div>' : '';
+  const vpNote   = (r.tax && r.tax.vp_note) ? '<div class="ai-insight blue">' + esc(r.tax.vp_note) + '</div>' : '';
 
   out.innerHTML =
     '<div class="ai-insight ' + (ratingColor[r.overall && r.overall.rating] || 'blue') + '">'
-    + '<strong>Overall: ' + ((r.overall && r.overall.rating) || '').toUpperCase() + '</strong>'
-    + (r.overall && r.overall.summary || '')
+    + '<strong>Overall: ' + esc((r.overall && r.overall.rating) || '').toUpperCase() + '</strong>'
+    + esc(r.overall && r.overall.summary || '')
     + '</div>'
     + '<div class="ai-section-hdr">Performance Highlights</div>'
     + winHtml + loseHtml
@@ -676,7 +678,7 @@ function renderAiResult(r) {
     + riskHtml
     + '<div class="ai-section-hdr">Tax Optimization</div>'
     + '<div class="ai-insight ' + taxColor + '"><strong>' + taxTitle + '</strong>'
-    + (r.tax && r.tax.fsa_note || '') + '</div>'
+    + esc(r.tax && r.tax.fsa_note || '') + '</div>'
     + vpNote
     + '<div class="ai-section-hdr">Recommendations</div>'
     + '<div class="rec-list">' + recsHtml + '</div>';
@@ -690,7 +692,7 @@ function render() {
 
   app.innerHTML = `
     <div class="header">
-      <h1>${D.portfolio_name}</h1>
+      <h1>${esc(D.portfolio_name)}</h1>
       <div style="display:flex;align-items:center;gap:12px">
         <span class="date">${dateStr}</span>
         <button id="md-btn" onclick="copyMarkdown()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:8px;font-size:13px;cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='var(--surface2)'">Copy as Markdown</button>
@@ -727,9 +729,9 @@ function render() {
               const pc = Number(h.pnl) >= 0 ? 'positive' : 'negative';
               const tfsCell = h.tfs_rate > 0 ? `<span class="tfs-badge">${(h.tfs_rate*100).toFixed(0)}%</span>` : '—';
               return `<tr>
-                <td style="font-weight:600">${h.ticker||'—'}</td>
-                <td style="color:var(--text2);font-size:13px">${h.name||h.isin}</td>
-                <td>${h.asset_type}</td>
+                <td style="font-weight:600">${esc(h.ticker)||'—'}</td>
+                <td style="color:var(--text2);font-size:13px">${esc(h.name||h.isin)}</td>
+                <td>${esc(h.asset_type)}</td>
                 <td class="num">${tfsCell}</td>
                 <td class="num">${fmt(h.shares,4)}</td>
                 <td class="num">${fmt(h.cost_basis)}</td>
@@ -807,7 +809,7 @@ function render() {
         ? (dev>0?'+':'') + fmt(d.deviation,1) + '%'
         : 'OK';
       return `<div class="dev-row">
-        <div class="dev-label">${d.name}</div>
+        <div class="dev-label">${esc(d.name)}</div>
         <div class="dev-bars">
           <div class="dev-bar-wrap"><div class="dev-bar-fill" style="width:${(Number(d.current)/maxPct*100)}%;background:var(--blue)"></div></div>
           <div class="dev-bar-wrap"><div class="dev-bar-fill" style="width:${(Number(d.target)/maxPct*100)}%;background:var(--purple)"></div></div>
@@ -856,8 +858,8 @@ function render() {
     const sellRows = r.sells.map(s => {
       const taxable = s.realized_gain > 0 ? s.realized_gain * (1 - s.tfs_rate) : s.realized_gain;
       return `<tr>
-        <td>${s.date}</td>
-        <td style="font-weight:600">${s.ticker}</td>
+        <td>${esc(s.date)}</td>
+        <td style="font-weight:600">${esc(s.ticker)}</td>
         <td class="num">${fmt(s.quantity,4)}</td>
         <td class="num">${fmt(s.price,4)}</td>
         <td class="num ${gainCls(s.realized_gain)}">${fmt(s.realized_gain)}</td>
@@ -916,7 +918,7 @@ def open_dashboard(
     if output:
         out_path = Path(output)
     else:
-        out_path = Path(tempfile.gettempdir()) / "portfolio-dashboard.html"
+        out_path = Path(tempfile.gettempdir()) / f"portfolio-dashboard-{secrets.token_hex(8)}.html"
 
     out_path.write_text(html, encoding="utf-8")
     console.print(f"[green]Dashboard saved to {out_path}[/green]")
