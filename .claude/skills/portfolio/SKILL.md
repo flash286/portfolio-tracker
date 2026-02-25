@@ -156,7 +156,23 @@ pt rebalance check <PID>
 
 Show which assets are overweight / underweight (skip if no targets configured).
 
-### 5 — Tax snapshot (optional)
+### 5 — FSA sanity check
+
+Read `config.json` at the project root to get the actual FSA limit:
+
+```bash
+cat config.json   # look at "freistellungsauftrag"
+```
+
+When reporting FSA usage from `pt stats summary`, always compare against the
+value in `config.json`, NOT the default €1,000. Common values:
+- **€1,000** — single person (Einzelveranlagung)
+- **€2,000** — joint / married (Zusammenveranlagung)
+
+Example: if config shows `2000.0` and stats show €1,245 used → €755 remaining,
+everything is fine. Only flag a problem if used amount exceeds the config value.
+
+### 6 — Tax snapshot (optional)
 
 Ask: "Would you like a tax summary for the current year?"
 
