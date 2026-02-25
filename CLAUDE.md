@@ -200,6 +200,41 @@ annual BMF-published rates. Years 2020–2022 are
 `0` (no VP owed). 2023 = 2.55%, 2024 = 2.29%,
 2025 = 2.53%.
 
+## AI Compatibility
+
+Claude Code Skills in `.claude/skills/` provide AI-powered workflows built on top of the CLI.
+Invoke with `/skill-name` in Claude Code.
+
+### Available Skills
+
+| Command | Description |
+|---------|-------------|
+| `/portfolio import <file>` | Import transactions from any broker CSV |
+| `/portfolio summary` | Portfolio overview, allocation, tax snapshot |
+| `/portfolio` | Show menu (import or summary) |
+
+Skill file: `.claude/skills/portfolio/SKILL.md`
+
+### AI as Universal Importer
+
+`/portfolio import` lets an AI handle any broker export without writing a custom importer:
+
+```
+1. AI reads the CSV, infers column meaning
+2. For each deposit/withdrawal → pt cash add <pid> <amount> --type top_up|withdrawal
+3. For each buy/sell:
+   a. pt holdings list <pid>  — check if holding exists
+   b. pt holdings add <pid> <isin> <type> ...  — create if missing
+   c. pt tx buy|sell <holding_id> <qty> <price> --date YYYY-MM-DD
+4. For dividends → pt cash add <pid> <amount> --type dividend
+```
+
+Works for any broker that exports buy/sell history (Trading 212, Interactive Brokers, etc.)
+No Python code per broker — prompt-driven column mapping.
+
+**Note:** Unlike `pt import revolut`, the AI import is NOT idempotent. Running twice creates
+duplicate transactions. The skill includes a dry-run summary step before recording anything.
+
 ## Importer Architecture
 
 `importers/BaseImporter` ABC wraps `_run_import()` atomically:

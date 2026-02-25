@@ -25,6 +25,7 @@ CLI tool for tracking ETF portfolios with full **German tax support** — Abgelt
 - **Web dashboard** — offline single-page app with donut charts, tax summary, Markdown export
 - **Cash tracking** — full cash flow ledger (top-ups, buys, sells, dividends, fees)
 - **Revolut CSV import** — one-command idempotent import of full transaction history
+- **AI import** — Claude Code skill `/portfolio import` imports from any broker CSV without custom code
 
 ---
 
@@ -40,6 +41,7 @@ CLI tool for tracking ETF portfolios with full **German tax support** — Abgelt
 - [Rebalancing](#rebalancing)
 - [Web dashboard](#web-dashboard)
 - [Cash management](#cash-management)
+- [AI integration](#ai-integration-claude-code)
 - [CLI reference](#cli-reference)
 - [Stack](#stack)
 
@@ -258,6 +260,46 @@ pt cash add 1 500 --type top_up
 ```
 
 Types: `top_up`, `withdrawal`, `buy`, `sell`, `dividend`, `fee`. Buy/sell transactions automatically create matching cash entries.
+
+---
+
+## AI integration (Claude Code)
+
+This project includes [Claude Code Skills](https://docs.anthropic.com/en/docs/claude-code/skills) — reusable AI workflows that drive the CLI. No separate server or API key needed beyond your existing Claude Code session.
+
+### Skills
+
+| Command | Description |
+|---------|-------------|
+| `/portfolio import <file>` | Import from any broker CSV |
+| `/portfolio summary` | Full portfolio overview + tax snapshot |
+| `/portfolio` | Show menu |
+
+The skill lives in `.claude/skills/portfolio/SKILL.md` and is committed to the repo —
+available to anyone who clones it.
+
+### Universal broker import
+
+```
+/portfolio import data/trading212_export.csv
+```
+
+Claude reads the columns, maps them to `pt` commands, and imports:
+1. Shows a dry-run summary (counts by type, date range, tickers)
+2. Asks for confirmation before writing anything
+3. Creates missing holdings and records all transactions chronologically
+
+> Unlike `pt import revolut`, the AI import is **not idempotent**. Running it twice creates
+> duplicates — the skill always shows a preview and asks before proceeding.
+
+### Portfolio overview
+
+```
+/portfolio summary
+```
+
+Runs `pt stats`, `pt holdings list`, `pt rebalance check`, and optional tax commands,
+then gives 1–3 actionable recommendations based on the data.
 
 ---
 

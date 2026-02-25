@@ -23,3 +23,7 @@ config.json
 user_registry.json
 data/*.csv
 data/*.pdf
+
+# Claude Code — personal/machine-specific (skills are committed, these are not)
+.claude/settings.local.json
+.claude/projects/
