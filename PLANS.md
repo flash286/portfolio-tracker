@@ -101,7 +101,38 @@ Export data for Anlage KAP (tax return appendix):
 
 ---
 
-## 8. pytr Auto-Sync (optional)
+## 8. Tax & Math Engine Refactoring
+
+The core financial logic lives in `core/calculator.py` as a large monolithic class. Before this project can be reliably extended (or used by others), the math layer needs to be extracted, documented, and covered by tests.
+
+### What to extract
+
+| Module | Responsibility |
+|--------|---------------|
+| `core/tax/abgeltungssteuer.py` | Abgeltungssteuer + Soli + Kirchensteuer calculation |
+| `core/tax/teilfreistellung.py` | TFS rates per §20 InvStG, weighted portfolio TFS |
+| `core/tax/vorabpauschale.py` | §18 InvStG annual prepayment tax (Basisertrag formula) |
+| `core/tax/freistellungsauftrag.py` | FSA allocation across income types |
+| `core/finance/fifo.py` | FIFO lot matching for realized gain calculation |
+| `core/finance/returns.py` | TWR, simple return, cost basis calculations |
+
+### What good looks like
+
+- Each module is a **pure function** — no DB access, no I/O, only `Decimal` in, `Decimal` out
+- Fully documented with docstrings including legal references (§ InvStG, § EStG)
+- 100% test coverage via `pytest` with known-good values from official BMF examples
+- `PortfolioCalculator` becomes a thin orchestration layer that calls these modules
+- CLI commands stay unchanged — pure refactor, no behavior change
+
+### Why this matters
+
+- Makes German tax logic auditable and trustworthy
+- Enables contributors to understand and verify calculations independently
+- Required foundation before adding Steuererklärung export or more complex tax scenarios
+
+---
+
+## 9. pytr Auto-Sync (optional)
 
 See section 1b above. Lower priority — depends on 1a being stable first.
 
@@ -113,12 +144,13 @@ See section 1b above. Lower priority — depends on 1a being stable first.
 |---|------|------------|-------|
 | 1 | TR CSV import | Medium | High — no TR data without this |
 | 2 | Migration workflow | Low | High — needed before Revolut liquidation |
-| 3 | Performance history | Medium | Medium — nice, but not urgent |
-| 4 | Sparplan tracking | Low | Medium — after DCA setup in TR |
-| 5 | Multi-portfolio compare | Low | Medium — partially works already |
-| 6 | Steuererklärung export | Medium | Low — once a year |
-| 7 | Alerts | Medium | Low — nice to have |
-| 8 | pytr auto-sync | High | Low — private API, unstable |
+| 3 | Tax & math engine refactoring | Medium | High — foundation for correctness and contributions |
+| 4 | Performance history | Medium | Medium — nice, but not urgent |
+| 5 | Sparplan tracking | Low | Medium — after DCA setup in TR |
+| 6 | Multi-portfolio compare | Low | Medium — partially works already |
+| 7 | Steuererklärung export | Medium | Low — once a year |
+| 8 | Alerts | Medium | Low — nice to have |
+| 9 | pytr auto-sync | High | Low — private API, unstable |
 
 ---
 
