@@ -3,12 +3,12 @@
 ## 1. Trade Republic Integration
 
 ### 1a. Manual CSV Import (priority — do this first)
-Trade Republic allows exporting transaction history as CSV from the app or website. Write `scripts/import_tr.py` following the same pattern as `import_revolut_csv.py`.
+Trade Republic allows exporting transaction history as CSV from the app or website. Implement `pt import tr <file.csv>` following the same pattern as `pt import revolut`.
 
 - Download a sample CSV from TR and study the format
 - Parse: buys, sells, dividends, Sparplan purchases, fees
 - Create portfolio + holdings + transactions + cash_transactions
-- Support idempotent re-import (no duplicate transactions)
+- Idempotent re-import via `source_id` (same pattern as Revolut importer)
 - Command: `pt import tr <file.csv>`
 
 ### 1b. Automatic Sync via pytr (optional, after 1a)
@@ -26,28 +26,7 @@ Plan: use pytr optionally as a fallback for `pt sync tr`. The primary path is ma
 
 ---
 
-## 2. Vorabpauschale Calculator
-
-Vorabpauschale is the annual tax on unrealized gains for accumulating funds in Germany. All 5 ETFs in Portfolio A are accumulating, making this relevant.
-
-Formula:
-```
-Basisertrag = Fondswert_01.01 × Basiszins × 0.7
-Vorabpauschale = min(Basisertrag, actual_gain_for_year)
-Teilfreistellung = 30% for Aktienfonds (>51% equity)
-Taxable_amount = Vorabpauschale × (1 - Teilfreistellung)
-Tax = Taxable_amount × 26.375% (Abgeltungssteuer + Soli)
-```
-
-- Basiszins is published by Bundesbank each January
-- Need to store Fondswert on Jan 1 of each year
-- Teilfreistellung depends on fund type (30% equity, 15% mixed, 0% bond)
-- Deducted from Freistellungsauftrag
-- Command: `pt tax vorabpauschale <portfolio_id> --year 2026`
-
----
-
-## 3. Migration Workflow (Revolut → Trade Republic)
+## 2. Migration Workflow (Revolut → Trade Republic)
 
 Step-by-step guided workflow for migration:
 
@@ -64,7 +43,7 @@ pt migrate plan 1 --target-portfolio 2
 
 ---
 
-## 4. Sparplan (DCA) Tracking
+## 3. Sparplan (DCA) Tracking
 
 Monthly Sparplan — automated purchases in Trade Republic.
 
@@ -76,7 +55,7 @@ Monthly Sparplan — automated purchases in Trade Republic.
 
 ---
 
-## 5. Performance History
+## 4. Performance History
 
 Currently only a snapshot of the current state exists. Historical tracking is needed.
 
@@ -88,18 +67,18 @@ Currently only a snapshot of the current state exists. Historical tracking is ne
 
 ---
 
-## 6. Multi-Portfolio Support
+## 5. Multi-Portfolio Support
 
-During migration, two portfolios (Revolut + TR) will coexist. Already supported at the DB level, but still needed:
+During migration, two portfolios (Revolut + TR) will coexist. DB-level support already exists, but still needed:
 
-- `pt portfolio compare 1 2` — compare two portfolios
+- `pt portfolio compare 1 2` — compare two portfolios side by side
 - `pt stats summary --all` — combined statistics across all portfolios
 - Dashboard: portfolio switcher + combined view
 - Aggregate cash balance / P&L across all portfolios
 
 ---
 
-## 7. Alerts & Notifications
+## 6. Alerts & Notifications
 
 - Deviation from target exceeds threshold → rebalancing reminder
 - P&L reaches a certain amount
@@ -109,7 +88,7 @@ During migration, two portfolios (Revolut + TR) will coexist. Already supported 
 
 ---
 
-## 8. Steuererklärung Export
+## 7. Steuererklärung Export
 
 Export data for Anlage KAP (tax return appendix):
 
@@ -122,56 +101,9 @@ Export data for Anlage KAP (tax return appendix):
 
 ---
 
-## 9. User-Agnostic Configuration
+## 8. pytr Auto-Sync (optional)
 
-Personal specifics for a single user are currently hardcoded. These should be moved to a config file.
-
-### What is hardcoded today
-
-| Location | What | Where |
-|----------|------|-------|
-| `calculator.py` | `DEFAULT_FREISTELLUNGSAUFTRAG = €2000` (married) | core |
-| `calculator.py` | Tax rates 25% + 5.5% Soli | core |
-| `dashboard.py` | `isin_names` — hardcoded Portfolio A tickers | dashboard |
-| `dashboard.py` | `fsaTotal = 2000` in JS | dashboard |
-| `CLAUDE.md` / `AGENTS.md` | Name, citizenship, broker, tax profile | docs |
-| `price_fetcher.py` | `TICKER_OVERRIDES` — only Revolut + Portfolio A tickers | external |
-
-### What to do
-
-**`config.toml` at project root** (created on first run):
-```toml
-[tax]
-country = "DE"
-freistellungsauftrag = 2000   # 1000 single / 2000 married
-abgeltungssteuer_rate = 0.25
-soli_rate = 0.055
-kirchensteuer = false
-
-[user]
-name = ""          # optional, for display only
-currency = "EUR"
-
-[prices]
-default_exchange_suffix = ".DE"
-```
-
-**`pt config set tax.freistellungsauftrag 1000`** — CLI for changes
-
-**Remove from code:**
-- Hardcoded `€2,000` → read from config
-- `isin_names` in dashboard → pull from holdings in DB (almost done already)
-- `fsaTotal = 2000` in JS → pass from Python in JSON data
-
-**Remove from documentation:**
-- Personal data (name, citizenship) → keep only as examples in `README`
-- `CLAUDE.md` should contain only technical project specifics
-
-### What NOT to change
-
-- German tax model as default (target audience — DE residents)
-- SQLite as storage — sufficient for a single user
-- CLI-first approach
+See section 1b above. Lower priority — depends on 1a being stable first.
 
 ---
 
@@ -179,13 +111,21 @@ default_exchange_suffix = ".DE"
 
 | # | Task | Complexity | Value |
 |---|------|------------|-------|
-| 1 | TR CSV import | Medium | High — no data without this |
-| 2 | Vorabpauschale | Medium | High — directly affects taxes |
-| 3 | Migration workflow | Low | High — needed right now |
-| 4 | Performance history | Medium | Medium — nice, but not urgent |
-| 5 | Sparplan tracking | Low | Medium — after DCA setup in TR |
-| 6 | Multi-portfolio | Low | Medium — partially works already |
-| 7 | User-agnostic config | Medium | Medium — needed before open source |
+| 1 | TR CSV import | Medium | High — no TR data without this |
+| 2 | Migration workflow | Low | High — needed before Revolut liquidation |
+| 3 | Performance history | Medium | Medium — nice, but not urgent |
+| 4 | Sparplan tracking | Low | Medium — after DCA setup in TR |
+| 5 | Multi-portfolio compare | Low | Medium — partially works already |
+| 6 | Steuererklärung export | Medium | Low — once a year |
+| 7 | Alerts | Medium | Low — nice to have |
 | 8 | pytr auto-sync | High | Low — private API, unstable |
-| 9 | Alerts | Medium | Low — nice to have |
-| 10 | Steuererklärung | Medium | Low — once a year |
+
+---
+
+## Completed
+
+| Feature | Notes |
+|---------|-------|
+| **Revolut CSV import** (`pt import revolut`) | Idempotent, interactive ticker resolution, auto price fetch |
+| **Vorabpauschale calculator** (`pt tax vorabpauschale`) | Full §18 InvStG implementation with caching |
+| **User-agnostic configuration** (`pt setup run`) | Interactive wizard, `config.json`, FSA/tax rates/currency |
