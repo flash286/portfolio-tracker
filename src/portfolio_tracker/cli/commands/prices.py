@@ -1,6 +1,8 @@
 """Price fetching commands."""
 
 from datetime import datetime
+from decimal import Decimal
+from typing import Optional
 
 import typer
 from rich.console import Console
@@ -44,7 +46,7 @@ def fetch(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
     console.print(f"Fetching prices for {len(holdings)} holdings...")
 
     # Map: holding_id -> price
-    prices_by_id: dict[int, object] = {}
+    prices_by_id: dict[int, Optional[Decimal]] = {}
 
     # Fetch stock/ETF/bond prices via yfinance (needs ticker)
     if stock_holdings:

@@ -10,14 +10,12 @@ from ...core.models import AssetType, Holding
 from ...data.repositories.cash_repo import CashRepository
 from ...data.repositories.holdings_repo import HoldingsRepository
 from ...data.repositories.portfolios_repo import PortfoliosRepository
-from ...data.repositories.prices_repo import PricesRepository
 
 app = typer.Typer(help="Manage holdings")
 console = Console()
 cash_repo = CashRepository()
 repo = HoldingsRepository()
 portfolios_repo = PortfoliosRepository()
-prices_repo = PricesRepository()
 
 ASSET_TYPES = [t.value for t in AssetType]
 
@@ -80,16 +78,10 @@ def list_holdings(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
         console.print(f"[red]Portfolio {portfolio_id} not found[/red]")
         raise typer.Exit(1)
 
-    holdings = repo.list_by_portfolio(portfolio_id)
+    holdings = repo.list_by_portfolio_with_prices(portfolio_id)
     if not holdings:
         console.print(f"[yellow]No holdings in '{p.name}'. Add one with: pt holdings add {portfolio_id} <ISIN> <TYPE>[/yellow]")  # noqa: E501
         return
-
-    # Load latest prices
-    for h in holdings:
-        latest = prices_repo.get_latest(h.id)
-        if latest:
-            h.current_price = latest.price
 
     table = Table(title=f"Holdings — {p.name}")
     table.add_column("ID", style="cyan", justify="right")

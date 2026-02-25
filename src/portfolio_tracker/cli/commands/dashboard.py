@@ -16,7 +16,6 @@ from ...core.rebalancer import Rebalancer
 from ...data.repositories.cash_repo import CashRepository
 from ...data.repositories.holdings_repo import HoldingsRepository
 from ...data.repositories.portfolios_repo import PortfoliosRepository
-from ...data.repositories.prices_repo import PricesRepository
 from ...data.repositories.targets_repo import TargetsRepository
 from ...data.repositories.transactions_repo import TransactionsRepository
 
@@ -103,7 +102,6 @@ def _collect_data(portfolio_id: int) -> dict:
     """Collect all portfolio data into a JSON-serializable dict."""
     portfolios_repo = PortfoliosRepository()
     holdings_repo = HoldingsRepository()
-    prices_repo = PricesRepository()
     targets_repo = TargetsRepository()
     tx_repo = TransactionsRepository()
 
@@ -111,13 +109,7 @@ def _collect_data(portfolio_id: int) -> dict:
     if not portfolio:
         raise typer.Exit(1)
 
-    holdings = holdings_repo.list_by_portfolio(portfolio_id)
-
-    # Load latest prices
-    for h in holdings:
-        latest = prices_repo.get_latest(h.id)
-        if latest:
-            h.current_price = latest.price
+    holdings = holdings_repo.list_by_portfolio_with_prices(portfolio_id)
 
     calc = PortfolioCalculator
     total_value = calc.total_value(holdings)

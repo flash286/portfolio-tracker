@@ -170,6 +170,7 @@ def vorabpauschale(
     holdings = holdings_repo.list_by_portfolio(portfolio_id)
 
     results = []
+    skipped_count = 0
     for h in holdings:
         if not h.ticker:
             continue
@@ -200,6 +201,7 @@ def vorabpauschale(
 
         if price_jan1 is None or price_dec31 is None:
             console.print(f"  [yellow]⚠ {h.ticker}: could not fetch historical prices — skipping[/yellow]")
+            skipped_count += 1
             continue
 
         # Determine if distributing (had dividends this year)
@@ -278,6 +280,9 @@ def vorabpauschale(
     if any(r.is_distributing for r in results):
         console.print("\n  [yellow]⚠ Distributing funds (Dist.) — Ausschüttungen reduzieren die VP.[/yellow]")
         console.print("  [dim]Tatsächliche VP = max(0, Basisertrag − Ausschüttungen/Anteil). Wert oben ist Obergrenze.[/dim]")  # noqa: E501
+    if skipped_count > 0:
+        console.print(f"\n  [red]⚠ {skipped_count} holding(s) wurden übersprungen (keine historischen Preise).[/red]")
+        console.print("  [red]Die Vorabpauschale-Berechnung ist UNVOLLSTÄNDIG. Preise abrufen und erneut ausführen.[/red]")
     console.print()
 
     # Save to cache so the dashboard can read it without fetching prices
