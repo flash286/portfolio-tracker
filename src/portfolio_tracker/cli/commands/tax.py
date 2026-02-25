@@ -7,7 +7,8 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from ...core.calculator import BASISZINS, PortfolioCalculator
+from ...core.tax import calculate_german_tax
+from ...core.tax.vorabpauschale import BASISZINS, calculate_vorabpauschale
 from ...data.repositories.holdings_repo import HoldingsRepository
 from ...data.repositories.lots_repo import LotsRepository
 from ...data.repositories.portfolios_repo import PortfoliosRepository
@@ -85,7 +86,7 @@ def realized(
     console.print(table)
 
     # Tax estimate on total taxable (TFS already applied per-row)
-    tax_info = PortfolioCalculator.calculate_german_tax(max(total_taxable, Decimal("0")))
+    tax_info = calculate_german_tax(max(total_taxable, Decimal("0")))
     tfs_exempt_total = total_realized - total_taxable
 
     console.print(f"\n  Total realized gain:        €{total_realized:+,.2f}")
@@ -208,7 +209,7 @@ def vorabpauschale(
             for tx in txs
         )
 
-        result = PortfolioCalculator.calculate_vorabpauschale(
+        result = calculate_vorabpauschale(
             ticker=h.ticker,
             isin=h.isin,
             year=year,
@@ -262,7 +263,7 @@ def vorabpauschale(
     console.print(table)
 
     # Tax estimate on total taxable VP
-    tax_info = PortfolioCalculator.calculate_german_tax(max(total_taxable, Decimal("0")))
+    tax_info = calculate_german_tax(max(total_taxable, Decimal("0")))
 
     console.print(f"\n  Vorabpauschale gesamt:        [bold]€{total_vp:,.2f}[/bold]")
     if total_vp > total_taxable:
