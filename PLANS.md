@@ -2,146 +2,144 @@
 
 ## 1. Trade Republic Integration
 
-### 1a. Manual CSV Import (приоритет — сделать первым)
-Trade Republic позволяет экспортировать историю транзакций как CSV из приложения/сайта. Написать `scripts/import_tr.py` по аналогии с `import_revolut_csv.py`.
+### 1a. Manual CSV Import (priority — do this first)
+Trade Republic allows exporting transaction history as CSV from the app or website. Write `scripts/import_tr.py` following the same pattern as `import_revolut_csv.py`.
 
-- Скачать пример CSV из TR и изучить формат
-- Парсить: покупки, продажи, дивиденды, Sparplan-покупки, комиссии
-- Создавать portfolio + holdings + transactions + cash_transactions
-- Поддержать идемпотентный ре-импорт (не дублировать транзакции)
-- Команда: `pt import tr <file.csv>`
+- Download a sample CSV from TR and study the format
+- Parse: buys, sells, dividends, Sparplan purchases, fees
+- Create portfolio + holdings + transactions + cash_transactions
+- Support idempotent re-import (no duplicate transactions)
+- Command: `pt import tr <file.csv>`
 
-### 1b. Автоматический sync через pytr (опционально, после 1a)
-[pytr](https://github.com/pytr-org/pytr) — неофициальная Python-библиотека для приватного WebSocket API Trade Republic.
+### 1b. Automatic Sync via pytr (optional, after 1a)
+[pytr](https://github.com/pytr-org/pytr) is an unofficial Python library for the Trade Republic private WebSocket API.
 
-Возможности: получение портфеля, экспорт транзакций, скачивание PDF-документов.
+Capabilities: fetching portfolio data, exporting transactions, downloading PDF documents.
 
-Подводные камни:
-- **Приватный API** — может сломаться без предупреждения при обновлении TR
-- **Авторизация**: web login требует 4-значный код каждую сессию; app login разлогинивает из мобильного приложения
-- **Нестабильность** — несколько форков из-за заброшенности оригинала
-- **Нет гарантий** — не аффилирован с Trade Republic
+Caveats:
+- **Private API** — may break without notice on TR updates
+- **Authentication**: web login requires a 4-digit code each session; app login logs you out of the mobile app
+- **Instability** — multiple forks exist due to the original being abandoned
+- **No guarantees** — not affiliated with Trade Republic
 
-Решение: использовать pytr опционально, как fallback для `pt sync tr`. Основной путь — ручной CSV-импорт.
+Plan: use pytr optionally as a fallback for `pt sync tr`. The primary path is manual CSV import.
 
 ---
 
 ## 2. Vorabpauschale Calculator
 
-Vorabpauschale — ежегодный налог на нереализованную прибыль accumulating-фондов в Германии. Все 5 ETF в Portfolio A — accumulating, поэтому это актуально.
+Vorabpauschale is the annual tax on unrealized gains for accumulating funds in Germany. All 5 ETFs in Portfolio A are accumulating, making this relevant.
 
-Формула:
+Formula:
 ```
 Basisertrag = Fondswert_01.01 × Basiszins × 0.7
-Vorabpauschale = min(Basisertrag, фактический_прирост_за_год)
-Teilfreistellung = 30% для Aktienfonds (>51% equity)
-Steuerpflichtiger_Betrag = Vorabpauschale × (1 - Teilfreistellung)
-Steuer = Steuerpflichtiger_Betrag × 26.375% (Abgeltungssteuer + Soli)
+Vorabpauschale = min(Basisertrag, actual_gain_for_year)
+Teilfreistellung = 30% for Aktienfonds (>51% equity)
+Taxable_amount = Vorabpauschale × (1 - Teilfreistellung)
+Tax = Taxable_amount × 26.375% (Abgeltungssteuer + Soli)
 ```
 
-- Basiszins публикуется Bundesbank каждый январь
-- Нужно хранить значения Fondswert на 01.01 каждого года
-- Teilfreistellung зависит от типа фонда (30% equity, 15% mixed, 0% bond)
-- Вычитается из Freistellungsauftrag
-- Команда: `pt tax vorabpauschale <portfolio_id> --year 2026`
+- Basiszins is published by Bundesbank each January
+- Need to store Fondswert on Jan 1 of each year
+- Teilfreistellung depends on fund type (30% equity, 15% mixed, 0% bond)
+- Deducted from Freistellungsauftrag
+- Command: `pt tax vorabpauschale <portfolio_id> --year 2026`
 
 ---
 
 ## 3. Migration Workflow (Revolut → Trade Republic)
 
-Пошаговый guided workflow для миграции:
+Step-by-step guided workflow for migration:
 
 ```
 pt migrate plan 1 --target-portfolio 2
 ```
 
-1. Показать текущий Revolut-портфель и кэш
-2. Рассчитать налог на продажу всех позиций (Abgeltungssteuer, с учётом Freistellungsauftrag)
-3. Показать сумму после продажи и налогов
-4. Показать целевое распределение в TR по Portfolio A
-5. Рассчитать конкретные покупки (количество × цена) для каждого ETF
-6. Показать итоговый план: что продать → сколько получишь → что купить
+1. Show current Revolut portfolio and cash
+2. Calculate tax on selling all positions (Abgeltungssteuer, accounting for Freistellungsauftrag)
+3. Show post-sale amount after taxes
+4. Show target allocation in TR per Portfolio A
+5. Calculate specific purchases (quantity × price) for each ETF
+6. Show the final plan: what to sell → how much you'll receive → what to buy
 
 ---
 
 ## 4. Sparplan (DCA) Tracking
 
-Monthly Sparplan — автоматические покупки в Trade Republic.
+Monthly Sparplan — automated purchases in Trade Republic.
 
-- Таблица `sparplan` в БД: portfolio_id, holding_id, amount_eur, frequency (monthly/biweekly), active
-- `pt sparplan set 2 VWCE 300` — установить €300/мес на VWCE
-- `pt sparplan list 2` — показать все активные Sparpläne
-- `pt sparplan simulate 2 --months 12` — симуляция: как будет выглядеть портфель через N месяцев
-- Dashboard: секция с прогрессом DCA
+- `sparplan` table in DB: portfolio_id, holding_id, amount_eur, frequency (monthly/biweekly), active
+- `pt sparplan set 2 VWCE 300` — set €300/month on VWCE
+- `pt sparplan list 2` — show all active Sparpläne
+- `pt sparplan simulate 2 --months 12` — simulation: what the portfolio will look like after N months
+- Dashboard: DCA progress section
 
 ---
 
 ## 5. Performance History
 
-Сейчас есть только snapshot текущего состояния. Нужна история.
+Currently only a snapshot of the current state exists. Historical tracking is needed.
 
-- Ежедневный snapshot portfolio value в таблицу `portfolio_snapshots` (date, portfolio_id, holdings_value, cash_balance, total_value)
-- Time-weighted return (TWR) — корректный расчёт доходности с учётом cash flows
-- `pt stats performance 1 --period 1y` — показать доходность за период
-- Dashboard: график стоимости портфеля во времени
-- Можно автоматизировать через `pt snapshot` запускаемый по cron / schedule
+- Daily portfolio value snapshot into a `portfolio_snapshots` table (date, portfolio_id, holdings_value, cash_balance, total_value)
+- Time-weighted return (TWR) — correct return calculation accounting for cash flows
+- `pt stats performance 1 --period 1y` — show return over a period
+- Dashboard: portfolio value chart over time
+- Can be automated via `pt snapshot` run by cron / scheduler
 
 ---
 
 ## 6. Multi-Portfolio Support
 
-Во время миграции будут одновременно существовать 2 портфеля (Revolut + TR). Уже поддерживается на уровне БД, но нужно:
+During migration, two portfolios (Revolut + TR) will coexist. Already supported at the DB level, but still needed:
 
-- `pt portfolio compare 1 2` — сравнение двух портфелей
-- `pt stats summary --all` — общая статистика по всем портфелям
-- Dashboard: переключатель между портфелями + combined view
-- Общий cash balance / P&L across all portfolios
+- `pt portfolio compare 1 2` — compare two portfolios
+- `pt stats summary --all` — combined statistics across all portfolios
+- Dashboard: portfolio switcher + combined view
+- Aggregate cash balance / P&L across all portfolios
 
 ---
 
 ## 7. Alerts & Notifications
 
-- Девиация от таргета превышает порог → напоминание о ребалансировке
-- P&L достиг определённой суммы
-- Freistellungsauftrag скоро исчерпан
-- Дивиденд получен
-- Реализация: `pt alerts check` (по cron) + вывод в консоль или email/Telegram
+- Deviation from target exceeds threshold → rebalancing reminder
+- P&L reaches a certain amount
+- Freistellungsauftrag nearly exhausted
+- Dividend received
+- Implementation: `pt alerts check` (via cron) + console output or email/Telegram
 
 ---
 
 ## 8. Steuererklärung Export
 
-Экспорт данных для Anlage KAP (приложение к налоговой декларации):
+Export data for Anlage KAP (tax return appendix):
 
-- Сумма дивидендов за год
-- Реализованная прибыль/убыток
-- Уплаченная Vorabpauschale
-- Использованный Freistellungsauftrag
-- Формат: CSV или PDF-отчёт
-- `pt tax report --year 2026`
-
----
+- Total dividends for the year
+- Realized gains/losses
+- Vorabpauschale paid
+- Freistellungsauftrag used
+- Format: CSV or PDF report
+- Command: `pt tax report --year 2026`
 
 ---
 
 ## 9. User-Agnostic Configuration
 
-Сейчас в коде захардкожена персональная специфика одного пользователя. Нужно вынести это в конфиг.
+Personal specifics for a single user are currently hardcoded. These should be moved to a config file.
 
-### Что захардкожено сейчас
+### What is hardcoded today
 
-| Место | Что | Где |
-|-------|-----|-----|
-| `calculator.py` | `DEFAULT_FREISTELLUNGSAUFTRAG = €2000` (женатый) | core |
-| `calculator.py` | Ставки налога 25% + 5.5% Soli | core |
-| `dashboard.py` | `isin_names` — захардкоженные тикеры Portfolio A | dashboard |
-| `dashboard.py` | `fsaTotal = 2000` в JS | dashboard |
-| `CLAUDE.md` / `AGENTS.md` | Имя, гражданство, брокер, налоговый профиль | docs |
-| `price_fetcher.py` | `TICKER_OVERRIDES` — только Revolut + Portfolio A тикеры | external |
+| Location | What | Where |
+|----------|------|-------|
+| `calculator.py` | `DEFAULT_FREISTELLUNGSAUFTRAG = €2000` (married) | core |
+| `calculator.py` | Tax rates 25% + 5.5% Soli | core |
+| `dashboard.py` | `isin_names` — hardcoded Portfolio A tickers | dashboard |
+| `dashboard.py` | `fsaTotal = 2000` in JS | dashboard |
+| `CLAUDE.md` / `AGENTS.md` | Name, citizenship, broker, tax profile | docs |
+| `price_fetcher.py` | `TICKER_OVERRIDES` — only Revolut + Portfolio A tickers | external |
 
-### Что сделать
+### What to do
 
-**`config.toml` в корне проекта** (создаётся при первом запуске):
+**`config.toml` at project root** (created on first run):
 ```toml
 [tax]
 country = "DE"
@@ -158,36 +156,36 @@ currency = "EUR"
 default_exchange_suffix = ".DE"
 ```
 
-**`pt config set tax.freistellungsauftrag 1000`** — CLI для изменения
+**`pt config set tax.freistellungsauftrag 1000`** — CLI for changes
 
-**Убрать из кода:**
-- Хардкоженный `€2,000` → читать из конфига
-- `isin_names` в dashboard → брать из holdings в БД (уже почти так)
-- `fsaTotal = 2000` в JS → передавать из Python в JSON-данные
+**Remove from code:**
+- Hardcoded `€2,000` → read from config
+- `isin_names` in dashboard → pull from holdings in DB (almost done already)
+- `fsaTotal = 2000` in JS → pass from Python in JSON data
 
-**Убрать из документации:**
-- Личные данные (имя, гражданство) → в `README` только как пример
-- `CLAUDE.md` оставить только техническую специфику проекта
+**Remove from documentation:**
+- Personal data (name, citizenship) → keep only as examples in `README`
+- `CLAUDE.md` should contain only technical project specifics
 
-### Что НЕ менять
+### What NOT to change
 
-- Немецкая налоговая модель как дефолт (целевая аудитория — DE резиденты)
-- SQLite как хранилище — достаточно для одного пользователя
-- CLI-first подход
+- German tax model as default (target audience — DE residents)
+- SQLite as storage — sufficient for a single user
+- CLI-first approach
 
 ---
 
-## Приоритеты
+## Priorities
 
-| # | Задача | Сложность | Ценность |
-|---|--------|-----------|----------|
-| 1 | TR CSV import | Средняя | Высокая — без этого нет данных |
-| 2 | Vorabpauschale | Средняя | Высокая — прямо влияет на налоги |
-| 3 | Migration workflow | Низкая | Высокая — нужно прямо сейчас |
-| 4 | Performance history | Средняя | Средняя — приятно, но не срочно |
-| 5 | Sparplan tracking | Низкая | Средняя — после настройки DCA в TR |
-| 6 | Multi-portfolio | Низкая | Средняя — частично уже работает |
-| 7 | User-agnostic config | Средняя | Средняя — нужно перед open source |
-| 8 | pytr автосинк | Высокая | Низкая — приватный API, нестабильно |
-| 9 | Alerts | Средняя | Низкая — nice to have |
-| 10 | Steuererklärung | Средняя | Низкая — раз в год |
+| # | Task | Complexity | Value |
+|---|------|------------|-------|
+| 1 | TR CSV import | Medium | High — no data without this |
+| 2 | Vorabpauschale | Medium | High — directly affects taxes |
+| 3 | Migration workflow | Low | High — needed right now |
+| 4 | Performance history | Medium | Medium — nice, but not urgent |
+| 5 | Sparplan tracking | Low | Medium — after DCA setup in TR |
+| 6 | Multi-portfolio | Low | Medium — partially works already |
+| 7 | User-agnostic config | Medium | Medium — needed before open source |
+| 8 | pytr auto-sync | High | Low — private API, unstable |
+| 9 | Alerts | Medium | Low — nice to have |
+| 10 | Steuererklärung | Medium | Low — once a year |
