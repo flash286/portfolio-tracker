@@ -5,48 +5,39 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-flash286-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/flash286)
 
-CLI tool for tracking ETF portfolios with full **German tax support** — Abgeltungssteuer, Teilfreistellung, Vorabpauschale, and FIFO cost basis. Designed for European ETF investors with German tax residency.
+Track your ETF portfolio with full **German tax compliance** — Abgeltungssteuer,
+Teilfreistellung, Vorabpauschale, FIFO lots — all from the command line.
+Built for European ETF investors living in Germany.
+
+> **Designed for:** DE tax residents · EUR-denominated ETF portfolios · buy-and-hold investors
+>
+> **Not designed for:** US investors, multi-currency portfolios, real-time trading
 
 ---
 
-![Dashboard overview](docs/screen%20-2.png)
-
-![Holdings and tax summary](docs/screen%20-1.png)
+<p align="center">
+  <img src="docs/screen%20-2.png" alt="Web dashboard — allocation charts and tax summary" width="900">
+  <br><em>Web dashboard — allocation, holdings, tax summary</em>
+</p>
+<p align="center">
+  <img src="docs/screen%20-1.png" alt="CLI — holdings list and stats" width="900">
+  <br><em>CLI — pt holdings list and pt stats summary</em>
+</p>
 
 ---
 
 ## Features
 
-- **Full transaction history** — buys, sells, dividends with FIFO lot tracking
-- **German tax engine** — Abgeltungssteuer (25%) + Soli (5.5%), Freistellungsauftrag, Teilfreistellung per ETF type
-- **Vorabpauschale** — annual prepayment tax for accumulating ETFs (§ 18 InvStG)
-- **Realized gains** — per-sell gain with FIFO lot matching and TFS applied
-- **Rebalancing** — set target allocations by ISIN or asset type, get trade suggestions
-- **Price history** — automatic fetching via yfinance for European ETFs (`.DE`, `.L`, `.AS` …)
-- **Web dashboard** — offline single-page app with donut charts, tax summary, Markdown export
-- **AI Analysis** — one-click portfolio review by Claude / GPT / Gemini built into the dashboard
-- **Cash tracking** — full cash flow ledger (top-ups, buys, sells, dividends, fees)
-- **Revolut CSV import** — one-command idempotent import of full transaction history
-- **AI import** — Claude Code skill `/portfolio import` imports from any broker CSV without custom code
-
----
-
-## Table of Contents
-
-- [Setup](#setup)
-- [Quick start](#quick-start)
-- [Revolut import](#revolut-import)
-- [Manual portfolio setup](#manual-portfolio-setup)
-- [Prices](#prices)
-- [Statistics](#statistics)
-- [Tax commands](#tax-commands)
-- [Rebalancing](#rebalancing)
-- [Web dashboard](#web-dashboard)
-- [AI Analysis](#ai-analysis)
-- [Cash management](#cash-management)
-- [AI integration](#ai-integration-claude-code)
-- [CLI reference](#cli-reference)
-- [Stack](#stack)
+- **Portfolio & holdings** — multiple portfolios, buys/sells/dividends, FIFO lots
+- **German tax engine** — Abgeltungssteuer (25%) + Soli (5.5%), Teilfreistellung, Freistellungsauftrag
+- **Vorabpauschale** — annual prepayment tax for accumulating ETFs (§18 InvStG)
+- **Rebalancing** — target allocations by ISIN/type, deviation check, trade suggestions
+- **Price fetching** — automatic yfinance lookups for European ETFs (`.DE` `.L` `.AS` …)
+- **Cash tracking** — full ledger: top-ups, buys, sells, dividends, fees
+- **Revolut import** — idempotent one-command CSV import
+- **Web dashboard** — offline SPA: charts, tax summary, Markdown export
+- **AI Analysis** — one-click portfolio review by Claude / GPT / Gemini in the dashboard
+- **AI import** — Claude Code skill imports any broker CSV without writing code
 
 ---
 
@@ -71,7 +62,9 @@ pt --help
 pt setup run
 ```
 
-The wizard asks for your tax profile (FSA amount, Zusammenveranlagung, church tax, preferred exchange suffix). Settings are saved to `config.json`.
+The wizard configures your tax profile (country, FSA amount, Zusammenveranlagung,
+church tax, exchange suffix) and optionally sets up an AI provider for dashboard
+analysis. Settings are saved to `config.json` (gitignored).
 
 ---
 
@@ -290,9 +283,11 @@ pt setup run
 Or edit `config.json` directly:
 
 ```json
-"ai_provider": "anthropic",
-"ai_api_key": "sk-ant-...",
-"ai_model": ""
+{
+  "ai_provider": "anthropic",
+  "ai_api_key": "sk-ant-...",
+  "ai_model": ""
+}
 ```
 
 Then reopen the dashboard:
@@ -318,7 +313,7 @@ Types: `top_up`, `withdrawal`, `buy`, `sell`, `dividend`, `fee`. Buy/sell transa
 
 ---
 
-## AI integration (Claude Code)
+## AI import (Claude Code skill)
 
 This project includes [Claude Code Skills](https://docs.anthropic.com/en/docs/claude-code/skills) — reusable AI workflows that drive the CLI. No separate server or API key needed beyond your existing Claude Code session.
 
@@ -369,7 +364,7 @@ pt stats      summary | allocation
 pt rebalance  target | check | suggest | execute
 pt cash       balance | history | add
 pt tax        realized | lots | vorabpauschale
-pt import     revolut | tr
+pt import     revolut
 pt dashboard  open
 pt setup      run
 ```
@@ -385,6 +380,26 @@ pt setup      run
 | Database | SQLite (`portfolio.db`) |
 | Prices | [yfinance](https://github.com/ranaroussi/yfinance) |
 | Dashboard | Vanilla HTML/JS/SVG — no CDN, no build step |
+| AI Providers | Anthropic Claude, OpenAI, Google Gemini (optional) |
+
+---
+
+## Privacy
+
+All data stays **local**:
+- `portfolio.db` — SQLite on your machine
+- `config.json` — local config, gitignored
+- No accounts, no cloud sync, no telemetry
+- AI Analysis calls your configured provider's API directly with your own key
+
+---
+
+## Disclaimer
+
+This tool provides estimates for informational purposes only.
+It is **not financial advice** and **not a substitute for professional tax counsel**.
+Always verify Vorabpauschale and Abgeltungssteuer calculations with a Steuerberater
+or your Finanzamt before filing.
 
 ---
 
