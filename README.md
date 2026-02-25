@@ -83,11 +83,13 @@ pt stats summary 1
 ```
 
 ```
-╭────────────────── My Portfolio ───────────────────╮
-│  Holdings value  €1,282.78    Cash balance   €0.00 │
-│  Total value     €1,282.78    Cost basis  €1,154.20│
-│  Unrealized P&L   +€128.58    Return        +11.1% │
-╰───────────────────────────────────────────────────╯
+Portfolio: My Portfolio
+
+  Total Cost Basis      €1,154.20
+  Holdings Value        €1,282.78
+  Cash Balance              €0.00
+  Portfolio Value       €1,282.78
+  Unrealized P&L     +€128.58 (+11.1%)
 ```
 
 ---
@@ -108,13 +110,13 @@ pt import revolut data/revolut_transactions.csv --pnl data/revolut_pnl.csv
 ```
 
 ```
-╭─────────────────────────── Import result ────────────────────────────╮
-│  Portfolio                Revolut (ID 1)                              │
-│  Holdings created                      8                              │
-│  Buys imported                        56                              │
-│  Dividends imported                   42                              │
-│  Cash rows imported                  146                              │
-╰──────────────────────────────────────────────────────────────────────╯
+╭──────────── Import result ─────────────╮
+│  Portfolio             Revolut (ID 1)  │
+│  Holdings created                   8  │
+│  Buys imported                     56  │
+│  Dividends imported                42  │
+│  Cash rows imported               146  │
+╰────────────────────────────────────────╯
 Done. Run pt holdings list to verify.
 ```
 
