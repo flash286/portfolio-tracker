@@ -61,6 +61,9 @@ def import_revolut(
     if fetch_prices and not result.dry_run and result.holdings_created > 0:
         _fetch_prices_for_portfolio(result.portfolio_id)
 
+    if result.unknown_tickers and not result.dry_run:
+        raise typer.Exit(1)
+
 
 @app.command("tr")
 def import_tr(

@@ -9,14 +9,12 @@ from ...core.models import Portfolio
 from ...data.repositories.cash_repo import CashRepository
 from ...data.repositories.holdings_repo import HoldingsRepository
 from ...data.repositories.portfolios_repo import PortfoliosRepository
-from ...data.repositories.prices_repo import PricesRepository
 
 app = typer.Typer(help="Manage portfolios")
 console = Console()
 cash_repo = CashRepository()
 repo = PortfoliosRepository()
 holdings_repo = HoldingsRepository()
-prices_repo = PricesRepository()
 
 
 @app.command("create")
@@ -61,11 +59,7 @@ def show(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
         console.print(f"[red]Portfolio {portfolio_id} not found[/red]")
         raise typer.Exit(1)
 
-    holdings = holdings_repo.list_by_portfolio(portfolio_id)
-    for h in holdings:
-        latest = prices_repo.get_latest(h.id)
-        if latest:
-            h.current_price = latest.price
+    holdings = holdings_repo.list_by_portfolio_with_prices(portfolio_id)
     total_cost = PortfolioCalculator.total_cost_basis(holdings)
     total_val = PortfolioCalculator.total_value(holdings)
     pnl = total_val - total_cost

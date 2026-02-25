@@ -21,7 +21,6 @@ from ...data.repositories.cash_repo import CashRepository
 from ...data.repositories.holdings_repo import HoldingsRepository
 from ...data.repositories.lots_repo import LotsRepository
 from ...data.repositories.portfolios_repo import PortfoliosRepository
-from ...data.repositories.prices_repo import PricesRepository
 from ...data.repositories.targets_repo import TargetsRepository
 from ...data.repositories.transactions_repo import TransactionsRepository
 
@@ -31,18 +30,8 @@ cash_repo = CashRepository()
 holdings_repo = HoldingsRepository()
 lots_repo = LotsRepository()
 portfolios_repo = PortfoliosRepository()
-prices_repo = PricesRepository()
 targets_repo = TargetsRepository()
 tx_repo = TransactionsRepository()
-
-
-def _load_holdings_with_prices(portfolio_id: int):
-    holdings = holdings_repo.list_by_portfolio(portfolio_id)
-    for h in holdings:
-        latest = prices_repo.get_latest(h.id)
-        if latest:
-            h.current_price = latest.price
-    return holdings
 
 
 @app.command("target")
@@ -126,7 +115,7 @@ def check(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
         console.print(f"[red]Portfolio {portfolio_id} not found[/red]")
         raise typer.Exit(1)
 
-    holdings = _load_holdings_with_prices(portfolio_id)
+    holdings = holdings_repo.list_by_portfolio_with_prices(portfolio_id)
     targets = targets_repo.list_by_portfolio(portfolio_id)
 
     if not targets:
@@ -170,7 +159,7 @@ def suggest(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
         console.print(f"[red]Portfolio {portfolio_id} not found[/red]")
         raise typer.Exit(1)
 
-    holdings = _load_holdings_with_prices(portfolio_id)
+    holdings = holdings_repo.list_by_portfolio_with_prices(portfolio_id)
     targets = targets_repo.list_by_portfolio(portfolio_id)
 
     if not targets:
@@ -232,7 +221,7 @@ def execute(
         console.print(f"[red]Portfolio {portfolio_id} not found[/red]")
         raise typer.Exit(1)
 
-    holdings = _load_holdings_with_prices(portfolio_id)
+    holdings = holdings_repo.list_by_portfolio_with_prices(portfolio_id)
     targets = targets_repo.list_by_portfolio(portfolio_id)
 
     if not targets:

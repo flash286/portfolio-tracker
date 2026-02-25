@@ -14,38 +14,9 @@ class CashRepository(BaseRepository[CashTransaction]):
     def create(
         self, tx: CashTransaction, source_id: Optional[str] = None
     ) -> Optional[CashTransaction]:
-        db = self._db()
         if source_id is not None:
-            cursor = db.conn.execute(
-                """INSERT OR IGNORE INTO cash_transactions
-                   (portfolio_id, cash_type, amount, transaction_date, description, source_id)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (
-                    tx.portfolio_id,
-                    tx.cash_type.value,
-                    str(tx.amount),
-                    tx.transaction_date.isoformat(),
-                    tx.description,
-                    source_id,
-                ),
-            )
-            if cursor.rowcount == 0:
-                return None
-        else:
-            cursor = db.conn.execute(
-                """INSERT INTO cash_transactions
-                   (portfolio_id, cash_type, amount, transaction_date, description)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (
-                    tx.portfolio_id,
-                    tx.cash_type.value,
-                    str(tx.amount),
-                    tx.transaction_date.isoformat(),
-                    tx.description,
-                ),
-            )
-        self._commit(db)
-        return self.get_by_id(cursor.lastrowid)
+            return self._insert_with_source_id(tx, source_id)
+        return self._insert(tx)
 
     def list_by_portfolio(self, portfolio_id: int) -> list[CashTransaction]:
         rows = (

@@ -13,45 +13,30 @@ class TransactionsRepository(BaseRepository[Transaction]):
     def create(
         self, tx: Transaction, source_id: Optional[str] = None
     ) -> Optional[Transaction]:
-        db = self._db()
+        # total_value is a @property on Transaction, not a dataclass field,
+        # so it must be passed explicitly as an extra_field.
         total_value = str(tx.quantity * tx.price)
         if source_id is not None:
-            cursor = db.conn.execute(
-                """INSERT OR IGNORE INTO transactions
-                   (holding_id, transaction_type, quantity, price, total_value, realized_gain,
-                    transaction_date, notes, source_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    tx.holding_id,
-                    tx.transaction_type.value,
-                    str(tx.quantity),
-                    str(tx.price),
-                    total_value,
-                    str(tx.realized_gain) if tx.realized_gain is not None else None,
-                    tx.transaction_date.isoformat(),
-                    tx.notes,
-                    source_id,
-                ),
+            return self._insert_with_source_id(
+                tx, source_id, extra_fields={"total_value": total_value}
             )
-            if cursor.rowcount == 0:
-                return None
-        else:
-            cursor = db.conn.execute(
-                """INSERT INTO transactions
-                   (holding_id, transaction_type, quantity, price, total_value, realized_gain,
-                    transaction_date, notes)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    tx.holding_id,
-                    tx.transaction_type.value,
-                    str(tx.quantity),
-                    str(tx.price),
-                    total_value,
-                    str(tx.realized_gain) if tx.realized_gain is not None else None,
-                    tx.transaction_date.isoformat(),
-                    tx.notes,
-                ),
-            )
+        db = self._db()
+        cursor = db.conn.execute(
+            """INSERT INTO transactions
+               (holding_id, transaction_type, quantity, price, total_value, realized_gain,
+                transaction_date, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                tx.holding_id,
+                tx.transaction_type.value,
+                str(tx.quantity),
+                str(tx.price),
+                total_value,
+                str(tx.realized_gain) if tx.realized_gain is not None else None,
+                tx.transaction_date.isoformat(),
+                tx.notes,
+            ),
+        )
         self._commit(db)
         return self.get_by_id(cursor.lastrowid)
 

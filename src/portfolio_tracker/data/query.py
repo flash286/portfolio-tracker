@@ -203,6 +203,30 @@ class BaseRepository(Generic[T]):
         self._commit(db)
         return self.get_by_id(cursor.lastrowid)
 
+    def _insert_with_source_id(
+        self, obj: T, source_id: str, extra_fields: Optional[dict] = None
+    ) -> Optional[T]:
+        """INSERT OR IGNORE with a source_id column for idempotent imports.
+
+        Returns None if the row already exists (duplicate source_id).
+        Pass extra_fields for computed columns not present in the dataclass.
+        """
+        db = self._db()
+        row_dict = self._mapper.to_db_dict(obj, skip=self._insert_skip)
+        if extra_fields:
+            row_dict.update(extra_fields)
+        row_dict["source_id"] = source_id
+        cols = ", ".join(row_dict)
+        placeholders = ", ".join("?" * len(row_dict))
+        cursor = db.conn.execute(
+            f"INSERT OR IGNORE INTO {self._table} ({cols}) VALUES ({placeholders})",
+            list(row_dict.values()),
+        )
+        self._commit(db)
+        if cursor.rowcount == 0:
+            return None
+        return self.get_by_id(cursor.lastrowid)
+
     def save(self, obj: T) -> T:
         """Generic UPDATE by obj.id: serializes all non-skipped fields."""
         db = self._db()
