@@ -18,6 +18,7 @@ build/
 
 # Personal data — never commit
 portfolio.db
+*.bak
 config.json
 user_registry.json
 data/*.csv

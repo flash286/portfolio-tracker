@@ -363,7 +363,7 @@ src/portfolio_tracker/
     └── price_fetcher.py  # yfinance with European ETF suffix handling
 
 scripts/
-└── create_demo.py          # Demo portfolio generator
+└── simulate_portfolios.py  # Portfolio simulation / backtesting
 
 data/                   # CSV exports (gitignored — personal data)
 portfolio.db            # SQLite database (gitignored — personal data)
@@ -380,4 +380,4 @@ Python 3.10+, [Typer](https://typer.tiangolo.com), [Rich](https://github.com/Tex
 
 ## License
 
-Private — personal use only.
+MIT — see [LICENSE](LICENSE).
