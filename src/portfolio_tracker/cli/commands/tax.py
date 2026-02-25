@@ -282,7 +282,7 @@ def vorabpauschale(
         console.print("  [dim]Tatsächliche VP = max(0, Basisertrag − Ausschüttungen/Anteil). Wert oben ist Obergrenze.[/dim]")  # noqa: E501
     if skipped_count > 0:
         console.print(f"\n  [red]⚠ {skipped_count} holding(s) wurden übersprungen (keine historischen Preise).[/red]")
-        console.print("  [red]Die Vorabpauschale-Berechnung ist UNVOLLSTÄNDIG. Preise abrufen und erneut ausführen.[/red]")
+        console.print("  [red]Die Vorabpauschale-Berechnung ist UNVOLLSTÄNDIG. Preise abrufen und erneut ausführen.[/red]")  # noqa: E501
     console.print()
 
     # Save to cache so the dashboard can read it without fetching prices
