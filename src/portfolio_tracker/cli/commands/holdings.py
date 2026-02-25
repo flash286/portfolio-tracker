@@ -69,7 +69,7 @@ def add(
         name=name, ticker=ticker, teilfreistellung_rate=tfs_decimal,
     ))
     tfs_info = f"  TFS: {tfs_decimal * 100:.0f}%" if tfs_decimal > 0 else ""
-    console.print(f"[green]Added {_display_name(h)} ({h.asset_type.value}) to '{p.name}' (Holding ID: {h.id})[/green]{tfs_info}")
+    console.print(f"[green]Added {_display_name(h)} ({h.asset_type.value}) to '{p.name}' (Holding ID: {h.id})[/green]{tfs_info}")  # noqa: E501
 
 
 @app.command("list")
@@ -82,7 +82,7 @@ def list_holdings(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
 
     holdings = repo.list_by_portfolio(portfolio_id)
     if not holdings:
-        console.print(f"[yellow]No holdings in '{p.name}'. Add one with: pt holdings add {portfolio_id} <ISIN> <TYPE>[/yellow]")
+        console.print(f"[yellow]No holdings in '{p.name}'. Add one with: pt holdings add {portfolio_id} <ISIN> <TYPE>[/yellow]")  # noqa: E501
         return
 
     # Load latest prices
@@ -136,9 +136,9 @@ def list_holdings(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
     cash_balance = cash_repo.get_balance(portfolio_id)
 
     pnl_color = "green" if total_pnl >= 0 else "red"
-    table.add_row("", "", "", "", "", "", f"[bold]{total_cost:,.2f}[/bold]", "", f"[bold]{total_val:,.2f}[/bold]", f"[bold {pnl_color}]{total_pnl:,.2f}[/bold {pnl_color}]")
+    table.add_row("", "", "", "", "", "", f"[bold]{total_cost:,.2f}[/bold]", "", f"[bold]{total_val:,.2f}[/bold]", f"[bold {pnl_color}]{total_pnl:,.2f}[/bold {pnl_color}]")  # noqa: E501
     console.print(table)
-    console.print(f"  Cash: [green]€{cash_balance:,.2f}[/green]  |  Total: [bold]€{total_val + cash_balance:,.2f}[/bold]\n")
+    console.print(f"  Cash: [green]€{cash_balance:,.2f}[/green]  |  Total: [bold]€{total_val + cash_balance:,.2f}[/bold]\n")  # noqa: E501
 
 
 @app.command("remove")

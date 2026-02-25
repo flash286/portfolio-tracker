@@ -8,15 +8,13 @@ Teilfreistellung rates per § 20 InvStG:
 
 from decimal import Decimal
 
-import pytest
-
+from portfolio_tracker.core.models import AssetType, Holding
 from portfolio_tracker.core.tax.teilfreistellung import (
     MIXED_FUND_RATE,
     TFS_RATES,
     apply_teilfreistellung,
     weighted_portfolio_tfs,
 )
-from portfolio_tracker.core.models import AssetType, Holding
 
 
 def _holding(isin, asset_type, shares, cost_basis, current_price=None, tfs_rate="0"):

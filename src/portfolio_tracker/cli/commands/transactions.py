@@ -7,7 +7,6 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from ...core.exceptions import InsufficientSharesError
 from ...core.models import CashTransaction, CashTransactionType, TaxLot, Transaction, TransactionType
 from ...data.database import get_db
 from ...data.repositories.cash_repo import CashRepository

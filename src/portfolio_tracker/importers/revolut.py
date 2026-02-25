@@ -10,8 +10,16 @@ from typing import Optional
 from rich.console import Console
 from rich.prompt import Prompt
 
-from ..core.models import AssetType, CashTransaction, CashTransactionType, Holding, Portfolio, TaxLot, Transaction, TransactionType
-from ..data.database import get_db
+from ..core.models import (
+    AssetType,
+    CashTransaction,
+    CashTransactionType,
+    Holding,
+    Portfolio,
+    TaxLot,
+    Transaction,
+    TransactionType,
+)
 from ..data.repositories.cash_repo import CashRepository
 from ..data.repositories.holdings_repo import HoldingsRepository
 from ..data.repositories.lots_repo import LotsRepository
@@ -182,7 +190,7 @@ class RevolutImporter(BaseImporter):
 
         user_registry[ticker] = meta
         save_user_registry(user_registry)
-        _console.print(f"  [green]Saved[/green] → user_registry.json\n")
+        _console.print("  [green]Saved[/green] → user_registry.json\n")
 
         return meta
 

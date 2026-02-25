@@ -10,8 +10,8 @@ from ...core.models import AssetType, PricePoint
 from ...data.repositories.holdings_repo import HoldingsRepository
 from ...data.repositories.portfolios_repo import PortfoliosRepository
 from ...data.repositories.prices_repo import PricesRepository
-from ...external.price_fetcher import PriceFetcher
 from ...external.crypto_fetcher import CryptoFetcher
+from ...external.price_fetcher import PriceFetcher
 
 app = typer.Typer(help="Fetch and view prices")
 console = Console()

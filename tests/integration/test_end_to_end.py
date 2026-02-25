@@ -32,7 +32,6 @@ Current prices (injected without network calls):
 """
 
 import textwrap
-from datetime import datetime
 from decimal import Decimal
 
 import pytest
@@ -45,12 +44,11 @@ from portfolio_tracker.core.finance import (
 )
 from portfolio_tracker.core.tax import calculate_german_tax
 from portfolio_tracker.core.tax.teilfreistellung import weighted_portfolio_tfs
-from portfolio_tracker.core.tax.vorabpauschale import BASISZINS, calculate_vorabpauschale
+from portfolio_tracker.core.tax.vorabpauschale import calculate_vorabpauschale
 from portfolio_tracker.data.repositories.cash_repo import CashRepository
 from portfolio_tracker.data.repositories.holdings_repo import HoldingsRepository
 from portfolio_tracker.data.repositories.prices_repo import PricesRepository
 from portfolio_tracker.importers.revolut import RevolutImporter
-
 
 # ---------------------------------------------------------------------------
 # Demo CSV — all buys in 2023 so full holdings are held on Jan 1 2024
@@ -106,6 +104,7 @@ def portfolio_with_prices(import_result, isolated_db):
     for h in holdings:
         if h.ticker in price_map:
             from datetime import datetime
+
             from portfolio_tracker.core.models import PricePoint
             prices_repo.store_price(PricePoint(
                 holding_id=h.id, price=price_map[h.ticker],

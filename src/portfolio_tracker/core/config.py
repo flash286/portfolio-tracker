@@ -1,7 +1,7 @@
 """Application configuration — loaded from config.json at project root."""
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional

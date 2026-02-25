@@ -169,10 +169,22 @@ class TestCashRepository:
         repo = CashRepository()
         now = datetime.now()
 
-        repo.create(CashTransaction(portfolio_id=p.id, cash_type=CashTransactionType.TOP_UP, amount=Decimal("1000"), transaction_date=now))
-        repo.create(CashTransaction(portfolio_id=p.id, cash_type=CashTransactionType.BUY, amount=Decimal("-500"), transaction_date=now))
-        repo.create(CashTransaction(portfolio_id=p.id, cash_type=CashTransactionType.DIVIDEND, amount=Decimal("50"), transaction_date=now))
-        repo.create(CashTransaction(portfolio_id=p.id, cash_type=CashTransactionType.FEE, amount=Decimal("-10"), transaction_date=now))
+        repo.create(CashTransaction(
+            portfolio_id=p.id, cash_type=CashTransactionType.TOP_UP,
+            amount=Decimal("1000"), transaction_date=now,
+        ))
+        repo.create(CashTransaction(
+            portfolio_id=p.id, cash_type=CashTransactionType.BUY,
+            amount=Decimal("-500"), transaction_date=now,
+        ))
+        repo.create(CashTransaction(
+            portfolio_id=p.id, cash_type=CashTransactionType.DIVIDEND,
+            amount=Decimal("50"), transaction_date=now,
+        ))
+        repo.create(CashTransaction(
+            portfolio_id=p.id, cash_type=CashTransactionType.FEE,
+            amount=Decimal("-10"), transaction_date=now,
+        ))
 
         assert repo.get_balance(p.id) == Decimal("540")
 
@@ -184,8 +196,14 @@ class TestCashRepository:
         p = self._portfolio()
         repo = CashRepository()
         now = datetime.now()
-        repo.create(CashTransaction(portfolio_id=p.id, cash_type=CashTransactionType.TOP_UP, amount=Decimal("100"), transaction_date=now))
-        repo.create(CashTransaction(portfolio_id=p.id, cash_type=CashTransactionType.TOP_UP, amount=Decimal("200"), transaction_date=now))
+        repo.create(CashTransaction(
+            portfolio_id=p.id, cash_type=CashTransactionType.TOP_UP,
+            amount=Decimal("100"), transaction_date=now,
+        ))
+        repo.create(CashTransaction(
+            portfolio_id=p.id, cash_type=CashTransactionType.TOP_UP,
+            amount=Decimal("200"), transaction_date=now,
+        ))
         assert len(repo.list_by_portfolio(p.id)) == 2
 
 
@@ -201,7 +219,9 @@ class TestPricesRepository:
         repo = PricesRepository()
 
         repo.store_price(PricePoint(holding_id=h.id, price=Decimal("100.00"), fetch_date=datetime.now(), source="test"))
-        latest = repo.store_price(PricePoint(holding_id=h.id, price=Decimal("110.50"), fetch_date=datetime.now(), source="test"))
+        latest = repo.store_price(
+            PricePoint(holding_id=h.id, price=Decimal("110.50"), fetch_date=datetime.now(), source="test")
+        )
 
         result = repo.get_latest(h.id)
         assert result.price == Decimal("110.50")
@@ -215,7 +235,7 @@ class TestPricesRepository:
         h = self._holding()
         repo = PricesRepository()
         for price in [100, 105, 110]:
-            repo.store_price(PricePoint(holding_id=h.id, price=Decimal(str(price)), fetch_date=datetime.now(), source="test"))
+            repo.store_price(PricePoint(holding_id=h.id, price=Decimal(str(price)), fetch_date=datetime.now(), source="test"))  # noqa: E501
 
         history = repo.get_history(h.id)
         assert len(history) == 3
@@ -295,9 +315,9 @@ class TestLotsRepository:
         repo = LotsRepository()
         from datetime import timedelta
         base = datetime(2024, 1, 1)
-        repo.create(TaxLot(holding_id=h.id, acquired_date=base + timedelta(days=30), quantity=Decimal("5"), cost_per_unit=Decimal("110"), quantity_remaining=Decimal("5")))
-        repo.create(TaxLot(holding_id=h.id, acquired_date=base, quantity=Decimal("10"), cost_per_unit=Decimal("100"), quantity_remaining=Decimal("10")))  # oldest
-        repo.create(TaxLot(holding_id=h.id, acquired_date=base + timedelta(days=60), quantity=Decimal("3"), cost_per_unit=Decimal("120"), quantity_remaining=Decimal("3")))
+        repo.create(TaxLot(holding_id=h.id, acquired_date=base + timedelta(days=30), quantity=Decimal("5"), cost_per_unit=Decimal("110"), quantity_remaining=Decimal("5")))  # noqa: E501
+        repo.create(TaxLot(holding_id=h.id, acquired_date=base, quantity=Decimal("10"), cost_per_unit=Decimal("100"), quantity_remaining=Decimal("10")))  # oldest  # noqa: E501
+        repo.create(TaxLot(holding_id=h.id, acquired_date=base + timedelta(days=60), quantity=Decimal("3"), cost_per_unit=Decimal("120"), quantity_remaining=Decimal("3")))  # noqa: E501
 
         lots = repo.get_open_lots_fifo(h.id)
         assert len(lots) == 3
@@ -336,8 +356,8 @@ class TestLotsRepository:
         h = self._holding()
         repo = LotsRepository()
         now = datetime.now()
-        lot1 = repo.create(TaxLot(holding_id=h.id, acquired_date=now, quantity=Decimal("10"), cost_per_unit=Decimal("100"), quantity_remaining=Decimal("10")))
-        lot2 = repo.create(TaxLot(holding_id=h.id, acquired_date=now, quantity=Decimal("5"), cost_per_unit=Decimal("120"), quantity_remaining=Decimal("5")))
+        lot1 = repo.create(TaxLot(holding_id=h.id, acquired_date=now, quantity=Decimal("10"), cost_per_unit=Decimal("100"), quantity_remaining=Decimal("10")))  # noqa: E501
+        repo.create(TaxLot(holding_id=h.id, acquired_date=now, quantity=Decimal("5"), cost_per_unit=Decimal("120"), quantity_remaining=Decimal("5")))  # noqa: E501
 
         # Before any reduction: 10*100 + 5*120 = 1600
         assert repo.get_fifo_cost_basis(h.id) == Decimal("1600")

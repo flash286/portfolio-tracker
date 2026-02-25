@@ -4,9 +4,6 @@ from decimal import Decimal
 from typing import Optional
 
 import yfinance as yf
-from datetime import timedelta
-
-from ..core.exceptions import PriceFetchError
 
 # European ETF tickers often need an exchange suffix for yfinance.
 # Map known tickers to their Yahoo Finance symbol.

@@ -7,8 +7,6 @@ Freistellungsauftrag limits per § 20 Abs. 9 EStG:
 
 from decimal import Decimal
 
-import pytest
-
 from portfolio_tracker.core.tax.freistellungsauftrag import (
     DEFAULT_FSA_JOINT,
     DEFAULT_FSA_SINGLE,

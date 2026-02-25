@@ -12,7 +12,6 @@ from decimal import Decimal
 
 from .calculator import PortfolioCalculator
 from .models import (
-    AssetType,
     Holding,
     RebalanceTrade,
     TargetAllocation,

@@ -3,11 +3,11 @@
 from decimal import Decimal
 
 import typer
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm, FloatPrompt, Prompt
 from rich.table import Table
-from rich import box
 
 from ...core.config import AppConfig, get_config, save_config
 
@@ -22,17 +22,16 @@ def _say(text: str, style: str = ""):
 
 def _ask(prompt: str, choices: list[str] | None = None, default: str = "") -> str:
     """Single-line prompt with optional choices displayed."""
-    choice_str = ""
     if choices:
         numbered = "  ".join(f"[bold]{i+1}[/bold]. {c}" for i, c in enumerate(choices))
         console.print(f"    {numbered}")
-    return Prompt.ask(f"  [cyan]>[/cyan]", default=default, console=console)
+    return Prompt.ask("  [cyan]>[/cyan]", default=default, console=console)
 
 
 def _pick(choices: list[str]) -> int:
     """Pick from numbered list. Returns 0-based index."""
     while True:
-        raw = Prompt.ask(f"  [cyan]>[/cyan]", console=console)
+        raw = Prompt.ask("  [cyan]>[/cyan]", console=console)
         try:
             idx = int(raw) - 1
             if 0 <= idx < len(choices):
@@ -99,8 +98,8 @@ def run_setup():
         else:
             _say("Freistellungsauftrag: €1 000 (одиночный).", "green")
 
-        _say(f"Если в банке подал заявление на другую сумму — введи её. Иначе Enter.")
-        fsa_raw = Prompt.ask(f"  [cyan]>[/cyan] FSA", default=str(int(suggested_fsa)), console=console)
+        _say("Если в банке подал заявление на другую сумму — введи её. Иначе Enter.")
+        fsa_raw = Prompt.ask("  [cyan]>[/cyan] FSA", default=str(int(suggested_fsa)), console=console)
         fsa = Decimal(fsa_raw)
     else:
         _say("Freistellungsauftrag (налоговый вычет, если применимо):")
@@ -131,10 +130,6 @@ def run_setup():
     for i, (label, _) in enumerate(EXCHANGES, 1):
         console.print(f"    [bold]{i}.[/bold] {label}")
 
-    default_ex_idx = next(
-        (i for i, (_, suffix) in enumerate(EXCHANGES) if suffix == existing.default_exchange_suffix),
-        0,
-    )
     console.print(f"    [dim](текущая: {existing.default_exchange_suffix})[/dim]")
     ex_idx = _pick(EXCHANGES)
     exchange_suffix = EXCHANGES[ex_idx][1]
@@ -147,7 +142,7 @@ def run_setup():
         console.print(f"    [bold]{i}.[/bold] {c}")
     console.print(f"    [dim](текущая: {existing.currency})[/dim]")
     cur_default = next((i for i, c in enumerate(CURRENCIES) if c == existing.currency), 0)
-    cur_raw = Prompt.ask(f"  [cyan]>[/cyan]", default=str(cur_default + 1), console=console)
+    cur_raw = Prompt.ask("  [cyan]>[/cyan]", default=str(cur_default + 1), console=console)
     try:
         currency = CURRENCIES[int(cur_raw) - 1]
     except (ValueError, IndexError):
@@ -188,8 +183,8 @@ def run_setup():
 
     console.print()
     console.print(Panel.fit(
-        f"[bold green]✓ Настройки сохранены в config.json[/bold green]\n\n"
-        f"[dim]Запусти [bold]pt setup run[/bold] снова чтобы изменить.[/dim]",
+        "[bold green]✓ Настройки сохранены в config.json[/bold green]\n\n"
+        "[dim]Запусти [bold]pt setup run[/bold] снова чтобы изменить.[/dim]",
         border_style="green",
         padding=(0, 2),
     ))

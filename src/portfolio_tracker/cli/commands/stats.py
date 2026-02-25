@@ -7,7 +7,6 @@ from rich.console import Console
 from rich.table import Table
 
 from ...core.calculator import PortfolioCalculator
-from ...core.models import AssetType
 from ...data.repositories.cash_repo import CashRepository
 from ...data.repositories.holdings_repo import HoldingsRepository
 from ...data.repositories.portfolios_repo import PortfoliosRepository
@@ -131,7 +130,7 @@ def allocation(portfolio_id: int = typer.Argument(..., help="Portfolio ID")):
     console.print(type_table)
 
     # By ISIN
-    console.print(f"\n[bold]Allocation by Holding[/bold]\n")
+    console.print("\n[bold]Allocation by Holding[/bold]\n")
     isin_alloc = PortfolioCalculator.allocation_by_isin(holdings)
 
     sym_table = Table()
