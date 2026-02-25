@@ -32,10 +32,19 @@ src/portfolio_tracker/
 │       └── transactions.py      # pt tx buy|sell|list
 ├── core/
 │   ├── models.py                # Dataclasses: Portfolio, Holding, Transaction, CashTransaction, etc.
-│   ├── calculator.py            # PortfolioCalculator (values, P&L, tax, allocation, Vorabpauschale)
+│   ├── calculator.py            # PortfolioCalculator — thin delegation wrapper (see Tax & Finance Engine)
 │   ├── rebalancer.py            # Rebalancer (deviation check, trade suggestions)
 │   ├── config.py                # AppConfig — reads config.json
-│   └── exceptions.py
+│   ├── exceptions.py
+│   ├── tax/                     # Pure tax functions (no DB/IO)
+│   │   ├── __init__.py          # calculate_german_tax() orchestrator + re-exports
+│   │   ├── abgeltungssteuer.py  # ABGELTUNGSSTEUER_RATE, SOLI_RATE, calculate_*()
+│   │   ├── teilfreistellung.py  # TFS_RATES, apply_teilfreistellung(), weighted_portfolio_tfs()
+│   │   ├── freistellungsauftrag.py  # DEFAULT_FSA_*, apply_freistellungsauftrag()
+│   │   └── vorabpauschale.py    # BASISZINS, VorabpauschaleResult, calculate_vorabpauschale()
+│   └── finance/                 # Pure portfolio math (no DB/IO)
+│       ├── __init__.py          # re-exports
+│       └── returns.py           # total_value(), total_cost_basis(), total_unrealized_pnl(), allocation_by_*()
 ├── data/
 │   ├── database.py              # SQLite schema + connection (get_db, _find_project_root)
 │   └── repositories/
@@ -138,6 +147,59 @@ pt setup run    # configure tax profile on first run
 pt --help
 ```
 
+## Tax & Finance Engine
+
+All math lives in pure, DB-free modules under
+`core/tax/` and `core/finance/`. Import them
+directly for new code — do NOT go through
+`PortfolioCalculator`.
+
+```python
+# Preferred — direct import
+from portfolio_tracker.core.tax import calculate_german_tax
+from portfolio_tracker.core.tax.vorabpauschale import (
+    BASISZINS, calculate_vorabpauschale,
+)
+from portfolio_tracker.core.finance.returns import (
+    total_value, allocation_by_type,
+)
+```
+
+`PortfolioCalculator` in `calculator.py` is a
+**thin backward-compatible delegation wrapper**
+kept only for legacy callers. All its methods
+just call the pure functions above. New code
+should import the pure functions directly.
+
+### German tax pipeline (in order)
+
+1. **Teilfreistellung** (§20 InvStG) — partial
+   exemption for investment funds. Equity ETF:
+   30%, mixed fund: 15%, bond/stock/crypto: 0%.
+2. **Freistellungsauftrag** (§20 Abs.9 EStG) —
+   annual allowance (€1 000 single / €2 000
+   joint), read from `config.json`.
+3. **Abgeltungssteuer** (§32d EStG) — 25% flat
+   tax on remaining gain.
+4. **Solidaritätszuschlag** (§4 SolZG) — 5.5%
+   surcharge on Abgeltungssteuer.
+
+### Vorabpauschale (§18 InvStG)
+
+Annual prepayment tax on accumulating ETFs.
+
+```
+Basisertrag/share = price_Jan1 × Basiszins × 0.7
+VP/share          = min(Basisertrag, Fondszuwachs)
+Vorabpauschale    = VP/share × shares
+Taxable VP        = Vorabpauschale × (1 − TFS_rate)
+```
+
+`BASISZINS` dict in `vorabpauschale.py` holds
+annual BMF-published rates. Years 2020–2022 are
+`0` (no VP owed). 2023 = 2.55%, 2024 = 2.29%,
+2025 = 2.53%.
+
 ## Importer Architecture
 
 `importers/BaseImporter` ABC wraps `_run_import()` atomically:
@@ -149,6 +211,55 @@ Ticker resolution priority (Revolut importer):
 2. P&L CSV (for distributing ETFs — contains ISIN)
 3. `user_registry.json` (saved from previous interactive sessions)
 4. Interactive Rich prompt (saves answer to `user_registry.json`)
+
+## Testing
+
+### Layout
+
+```
+tests/
+├── unit/
+│   ├── test_calculator.py       # legacy PortfolioCalculator tests
+│   ├── test_finance/
+│   │   └── test_returns.py      # pure finance functions
+│   └── test_tax/
+│       ├── test_abgeltungssteuer.py
+│       ├── test_freistellungsauftrag.py
+│       ├── test_teilfreistellung.py
+│       └── test_vorabpauschale.py
+└── integration/
+    └── test_end_to_end.py       # full import → prices → calc → tax
+```
+
+Run all tests:
+
+```bash
+pytest                           # all 190+
+pytest tests/unit/test_tax/      # tax only
+pytest tests/integration/        # e2e only
+```
+
+### Critical gotcha: prices are NOT auto-joined
+
+`HoldingsRepository.list_by_portfolio()` returns
+`Holding` objects with `current_price = None`.
+Prices **must be attached manually**:
+
+```python
+holdings = holdings_repo.list_by_portfolio(pid)
+for h in holdings:
+    latest = prices_repo.get_latest(h.id)
+    if latest:
+        h.current_price = latest.price
+```
+
+Forgetting this causes `total_value()`,
+`allocation_by_type()`, and `weighted_portfolio_tfs()`
+to silently return `0` / `{}`.
+
+This same pattern is required in test fixtures
+(see `portfolio_with_prices` in `test_end_to_end.py`)
+and in any CLI command that displays values.
 
 ## Conventions
 
