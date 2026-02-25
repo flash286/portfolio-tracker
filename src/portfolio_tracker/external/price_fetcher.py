@@ -33,7 +33,7 @@ class PriceFetcher:
     """Fetches prices for stocks, ETFs, and bonds via Yahoo Finance."""
 
     @staticmethod
-    def _try_fetch(symbol: str) -> Optional[float]:
+    def _try_fetch(symbol: str) -> Optional[Decimal]:
         """Try to get a price for a single Yahoo Finance symbol. Returns None on failure."""
         try:
             ticker = yf.Ticker(symbol)
@@ -42,14 +42,14 @@ class PriceFetcher:
                 info = ticker.fast_info
                 price = getattr(info, "last_price", None)
                 if price is not None and price > 0:
-                    return float(price)
+                    return Decimal(str(price)).quantize(Decimal("0.0001"))
             except Exception:
                 pass
             # Fallback to history
             try:
                 hist = ticker.history(period="5d")
                 if not hist.empty:
-                    return float(hist["Close"].iloc[-1])
+                    return Decimal(str(hist["Close"].iloc[-1])).quantize(Decimal("0.0001"))
             except Exception:
                 pass
         except Exception:
@@ -67,12 +67,12 @@ class PriceFetcher:
         if symbol.upper() in TICKER_OVERRIDES:
             price = PriceFetcher._try_fetch(TICKER_OVERRIDES[symbol.upper()])
             if price is not None:
-                return Decimal(str(round(price, 4)))
+                return price
 
         # 2. Try the symbol as-is
         price = PriceFetcher._try_fetch(symbol)
         if price is not None:
-            return Decimal(str(round(price, 4)))
+            return price
 
         # 3. Try with exchange suffixes
         base = symbol.split(".")[0]
@@ -82,7 +82,7 @@ class PriceFetcher:
                 continue
             price = PriceFetcher._try_fetch(candidate)
             if price is not None:
-                return Decimal(str(round(price, 4)))
+                return price
 
         return None
 
@@ -100,8 +100,7 @@ class PriceFetcher:
             t = yf.Ticker(yahoo_symbol)
             hist = t.history(start=start, end=end)
             if not hist.empty:
-                price = float(hist["Close"].iloc[-1 if last else 0])
-                return Decimal(str(round(price, 4)))
+                return Decimal(str(hist["Close"].iloc[-1 if last else 0])).quantize(Decimal("0.0001"))
         except Exception:
             pass
         return None
