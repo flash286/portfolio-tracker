@@ -4,12 +4,12 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from ...data.repositories.cash_repo import CashRepository
-from ...data.repositories.portfolios_repo import PortfoliosRepository
-from ...data.repositories.holdings_repo import HoldingsRepository
-from ...data.repositories.prices_repo import PricesRepository
 from ...core.calculator import PortfolioCalculator
 from ...core.models import Portfolio
+from ...data.repositories.cash_repo import CashRepository
+from ...data.repositories.holdings_repo import HoldingsRepository
+from ...data.repositories.portfolios_repo import PortfoliosRepository
+from ...data.repositories.prices_repo import PricesRepository
 
 app = typer.Typer(help="Manage portfolios")
 console = Console()

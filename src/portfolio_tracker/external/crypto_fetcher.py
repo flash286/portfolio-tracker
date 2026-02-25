@@ -79,7 +79,7 @@ class CryptoFetcher:
                     results[symbol] = Decimal(str(data[coin_id][currency]))
                 else:
                     results[symbol] = None
-        except Exception as e:
+        except Exception:
             for s in symbols:
                 results[s.upper()] = None
         return results

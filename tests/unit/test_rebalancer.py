@@ -2,8 +2,6 @@
 
 from decimal import Decimal
 
-import pytest
-
 from portfolio_tracker.core.models import (
     AssetType,
     Holding,

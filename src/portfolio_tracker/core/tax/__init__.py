@@ -38,8 +38,8 @@ from .teilfreistellung import (
     weighted_portfolio_tfs,
 )
 from .vorabpauschale import (
-    BASISZINS,
     BASISERTRAG_FACTOR,
+    BASISZINS,
     VorabpauschaleResult,
     calculate_vorabpauschale,
 )

@@ -2,7 +2,6 @@
 
 import dataclasses
 from decimal import Decimal
-from typing import Optional
 
 from ...core.models import TaxLot
 from ..query import BaseRepository, RowMapper

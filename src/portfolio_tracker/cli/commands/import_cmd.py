@@ -5,10 +5,10 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich import box
 
 from ...core.models import AssetType, PricePoint
 from ...data.repositories.holdings_repo import HoldingsRepository
@@ -26,8 +26,8 @@ def import_revolut(
     portfolio_name: str = typer.Option("Revolut", "--portfolio-name", "-n", help="Portfolio name to create or reuse"),
     portfolio_id: Optional[int] = typer.Option(None, "--portfolio-id", "-p", help="Use existing portfolio by ID"),
     dry_run: bool = typer.Option(False, "--dry-run", "-d", help="Validate without writing to DB"),
-    no_interactive: bool = typer.Option(False, "--no-interactive", help="Skip prompts for unknown tickers (CI/script mode)"),
-    fetch_prices: bool = typer.Option(True, "--fetch-prices/--no-fetch-prices", help="Fetch current prices after importing new holdings"),
+    no_interactive: bool = typer.Option(False, "--no-interactive", help="Skip prompts for unknown tickers (CI/script mode)"),  # noqa: E501
+    fetch_prices: bool = typer.Option(True, "--fetch-prices/--no-fetch-prices", help="Fetch current prices after importing new holdings"),  # noqa: E501
 ):
     """Import Revolut CSV export. Re-running on the same file is safe — duplicates are skipped."""
     if not tx_csv.exists():
@@ -104,7 +104,7 @@ def _print_result(result) -> None:
             console.print(f"  • {w}")
 
     if not result.dry_run:
-        console.print(f"\n[green]Done.[/green] Run [bold]pt holdings list[/bold] to verify.")
+        console.print("\n[green]Done.[/green] Run [bold]pt holdings list[/bold] to verify.")
 
 
 def _fetch_prices_for_portfolio(portfolio_id: int) -> None:

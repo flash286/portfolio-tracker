@@ -12,7 +12,6 @@ from rich.console import Console
 
 from ...core.calculator import PortfolioCalculator
 from ...core.config import get_config
-from ...core.models import Holding
 from ...core.rebalancer import Rebalancer
 from ...data.repositories.cash_repo import CashRepository
 from ...data.repositories.holdings_repo import HoldingsRepository
@@ -41,7 +40,6 @@ def _get_cash_balance(portfolio_id: int) -> Decimal:
 
 def _collect_vp_fsa(portfolio_id: int) -> dict:
     """Read Vorabpauschale FSA usage from cache (populated by pt tax vorabpauschale)."""
-    from ..commands.tax import app as _  # ensure tax module loaded (noop)
     from ...data.database import get_db
     db = get_db()
     rows = db.conn.execute(

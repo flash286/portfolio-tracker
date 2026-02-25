@@ -8,12 +8,9 @@ Reference values are computed from the § 18 InvStG formula:
 
 from decimal import Decimal
 
-import pytest
-
 from portfolio_tracker.core.tax.vorabpauschale import (
-    BASISZINS,
     BASISERTRAG_FACTOR,
-    VorabpauschaleResult,
+    BASISZINS,
     calculate_vorabpauschale,
 )
 

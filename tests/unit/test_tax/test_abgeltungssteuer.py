@@ -7,8 +7,6 @@ All expected values are computed from the legal formulas:
 
 from decimal import Decimal
 
-import pytest
-
 from portfolio_tracker.core.tax.abgeltungssteuer import (
     ABGELTUNGSSTEUER_RATE,
     SOLI_RATE,

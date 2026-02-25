@@ -3,7 +3,19 @@
 import typer
 
 from ..data.database import get_db
-from .commands import cash, dashboard, holdings, import_cmd, portfolio, prices, rebalance, setup, stats, tax, transactions
+from .commands import (
+    cash,
+    dashboard,
+    holdings,
+    import_cmd,
+    portfolio,
+    prices,
+    rebalance,
+    setup,
+    stats,
+    tax,
+    transactions,
+)
 
 app = typer.Typer(
     name="pt",

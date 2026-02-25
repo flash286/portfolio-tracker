@@ -2,10 +2,8 @@
 
 from decimal import Decimal
 
-import pytest
-
 from portfolio_tracker.core.calculator import PortfolioCalculator
-from portfolio_tracker.core.models import AssetType, Holding, TaxInfo
+from portfolio_tracker.core.models import AssetType, Holding
 
 
 def _holding(isin, asset_type, shares, cost_basis, current_price=None):

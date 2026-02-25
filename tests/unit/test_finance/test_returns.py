@@ -5,8 +5,6 @@ Tests the module-level functions directly (not via PortfolioCalculator).
 
 from decimal import Decimal
 
-import pytest
-
 from portfolio_tracker.core.finance.returns import (
     allocation_by_isin,
     allocation_by_type,

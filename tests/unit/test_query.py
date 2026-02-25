@@ -351,7 +351,6 @@ class TestBaseRepository:
         """save() adds updated_at = CURRENT_TIMESTAMP for Portfolio (has updated_at)."""
         repo = PortfoliosRepository()
         p = repo.create(Portfolio(name="TSTest"))
-        original_updated = p.updated_at
         p.description = "changed"
         saved = repo.save(p)
         # updated_at should be set (may equal original if within same second, but field exists)

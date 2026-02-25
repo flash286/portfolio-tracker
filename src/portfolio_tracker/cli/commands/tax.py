@@ -164,7 +164,7 @@ def vorabpauschale(
         return
 
     console.print(f"\n[bold]Vorabpauschale {year}[/bold] — {p.name}")
-    console.print(f"  Basiszins {year}: [cyan]{basiszins * 100:.2f}%[/cyan]  |  Basisertragsfaktor: {basiszins * Decimal('0.7') * 100:.4f}%\n")
+    console.print(f"  Basiszins {year}: [cyan]{basiszins * 100:.2f}%[/cyan]  |  Basisertragsfaktor: {basiszins * Decimal('0.7') * 100:.4f}%\n")  # noqa: E501
     console.print("[dim]Fetching historical prices (Jan 1 and Dec 31)...[/dim]")
 
     holdings = holdings_repo.list_by_portfolio(portfolio_id)
@@ -205,7 +205,7 @@ def vorabpauschale(
         # Determine if distributing (had dividends this year)
         is_distributing = any(
             tx.transaction_type.value == "dividend"
-            and datetime(year, 1, 1) <= (tx.transaction_date.replace(tzinfo=None) if tx.transaction_date.tzinfo else tx.transaction_date) < datetime(year + 1, 1, 1)
+            and datetime(year, 1, 1) <= (tx.transaction_date.replace(tzinfo=None) if tx.transaction_date.tzinfo else tx.transaction_date) < datetime(year + 1, 1, 1)  # noqa: E501
             for tx in txs
         )
 
@@ -277,7 +277,7 @@ def vorabpauschale(
 
     if any(r.is_distributing for r in results):
         console.print("\n  [yellow]⚠ Distributing funds (Dist.) — Ausschüttungen reduzieren die VP.[/yellow]")
-        console.print("  [dim]Tatsächliche VP = max(0, Basisertrag − Ausschüttungen/Anteil). Wert oben ist Obergrenze.[/dim]")
+        console.print("  [dim]Tatsächliche VP = max(0, Basisertrag − Ausschüttungen/Anteil). Wert oben ist Obergrenze.[/dim]")  # noqa: E501
     console.print()
 
     # Save to cache so the dashboard can read it without fetching prices

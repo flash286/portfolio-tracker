@@ -7,7 +7,14 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from ...core.models import AssetType, CashTransaction, CashTransactionType, TaxLot, TargetAllocation, Transaction, TransactionType
+from ...core.models import (
+    CashTransaction,
+    CashTransactionType,
+    TargetAllocation,
+    TaxLot,
+    Transaction,
+    TransactionType,
+)
 from ...core.rebalancer import Rebalancer
 from ...data.database import get_db
 from ...data.repositories.cash_repo import CashRepository
