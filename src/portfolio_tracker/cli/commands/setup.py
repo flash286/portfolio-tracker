@@ -38,7 +38,7 @@ def _pick(choices: list[str]) -> int:
                 return idx
         except ValueError:
             pass
-        console.print("    [red]Введи номер из списка[/red]")
+        console.print("    [red]Enter a number from the list[/red]")
 
 
 def _yesno(prompt: str, default: bool = True) -> bool:
@@ -60,68 +60,68 @@ def run_setup():
         padding=(0, 4),
     ))
 
-    greeting = "Снова привет!" if has_config else "Привет!"
-    _say(f"{greeting} Отвечай на вопросы — настрою трекер под тебя.")
+    greeting = "Welcome back!" if has_config else "Welcome!"
+    _say(f"{greeting} Answer a few questions to configure your portfolio tracker.")
     if has_config:
-        _say("Текущие настройки показаны в скобках. Enter = оставить.")
+        _say("Current settings are shown as defaults. Press Enter to keep them.")
 
     # ── Name (optional) ───────────────────────────────────────────────────────
-    console.print("\n  Как тебя зовут? (необязательно, только для приветствия в дашборде)")
+    console.print("\n  Your name? (optional, shown in the dashboard greeting)")
     name = Prompt.ask("  [cyan]>[/cyan]", default=existing.user_name or "", console=console)
 
     # ── Country ───────────────────────────────────────────────────────────────
-    _say("В какой стране платишь налоги?")
-    COUNTRIES = ["Германия (DE)", "Другая"]
+    _say("In which country do you pay taxes?")
+    COUNTRIES = ["Germany (DE)", "Other"]
     for i, c in enumerate(COUNTRIES, 1):
         console.print(f"    [bold]{i}.[/bold] {c}")
     country_idx = _pick(COUNTRIES)
     country = "DE" if country_idx == 0 else "OTHER"
 
     if country == "DE":
-        _say("Германия: Abgeltungssteuer [bold]25%[/bold] + Solidaritätszuschlag [bold]5.5%[/bold].", "green")
+        _say("Germany: Abgeltungssteuer [bold]25%[/bold] + Solidaritätszuschlag [bold]5.5%[/bold].", "green")
         abgeltung = Decimal("0.25")
         soli = Decimal("0.055")
     else:
-        _say("Другая страна — введи ставки налога вручную.")
-        abgeltung = Decimal(str(FloatPrompt.ask("  Ставка налога на прирост капитала (напр. 0.25)", console=console)))
+        _say("Other country — enter your tax rates manually.")
+        abgeltung = Decimal(str(FloatPrompt.ask("  Capital gains tax rate (e.g. 0.25)", console=console)))
         soli = Decimal("0")
         country = "OTHER"
 
     # ── FSA ───────────────────────────────────────────────────────────────────
     if country == "DE":
-        _say("Подаёшь налоговую декларацию совместно с супругом?")
-        _say("[dim]Zusammenveranlagung даёт Freistellungsauftrag €2 000 вместо €1 000.[/dim]")
+        _say("Do you file taxes jointly with a spouse (Zusammenveranlagung)?")
+        _say("[dim]Joint filing doubles the Freistellungsauftrag from €1,000 to €2,000.[/dim]")
         married = _yesno("Zusammenveranlagung", default=existing.freistellungsauftrag >= Decimal("2000"))
         suggested_fsa = 2000.0 if married else 1000.0
         if married:
-            _say("Freistellungsauftrag: €2 000 (совместный).", "green")
+            _say("Freistellungsauftrag: €2,000 (joint).", "green")
         else:
-            _say("Freistellungsauftrag: €1 000 (одиночный).", "green")
+            _say("Freistellungsauftrag: €1,000 (single).", "green")
 
-        _say("Если в банке подал заявление на другую сумму — введи её. Иначе Enter.")
+        _say("If you filed a different amount with your bank, enter it here. Otherwise press Enter.")
         fsa_raw = Prompt.ask("  [cyan]>[/cyan] FSA", default=str(int(suggested_fsa)), console=console)
         fsa = Decimal(fsa_raw)
     else:
-        _say("Freistellungsauftrag (налоговый вычет, если применимо):")
+        _say("Tax-free allowance (Freistellungsauftrag equivalent, if applicable):")
         fsa_raw = Prompt.ask("  [cyan]>[/cyan]", default="0", console=console)
         fsa = Decimal(fsa_raw)
 
     # ── Kirchensteuer ─────────────────────────────────────────────────────────
     kirche = False
     if country == "DE":
-        _say("Платишь Kirchensteuer (церковный налог)?")
-        _say("[dim]Если не состоишь в церкви или подал Austritt — нет.[/dim]")
+        _say("Do you pay Kirchensteuer (church tax)?")
+        _say("[dim]No if you are not a church member or have filed a Kirchenaustritt.[/dim]")
         kirche = _yesno("Kirchensteuer", default=existing.kirchensteuer)
         if kirche:
-            _say("Kirchensteuer учтена. Ставка зависит от земли (обычно 8–9%).", "yellow")
-            _say("[dim]Точный расчёт Kirchensteuer пока не реализован — будет показана оценка.[/dim]")
+            _say("Kirchensteuer noted. Rate depends on your federal state (usually 8–9%).", "yellow")
+            _say("[dim]Exact Kirchensteuer calculation is not yet implemented — an estimate will be shown.[/dim]")
         else:
-            _say("Kirchensteuer: не применяется.", "green")
+            _say("Kirchensteuer: not applicable.", "green")
 
     # ── Exchange suffix ────────────────────────────────────────────────────────
-    _say("Какую биржу использовать для поиска цен ETF/акций через Yahoo Finance?")
+    _say("Which exchange suffix to use for ETF/stock price lookups via Yahoo Finance?")
     EXCHANGES = [
-        (".DE  — Xetra (немецкие ETF, рекомендуется для DE резидентов)", ".DE"),
+        (".DE  — Xetra (recommended for DE residents)", ".DE"),
         (".L   — London Stock Exchange", ".L"),
         (".AS  — Euronext Amsterdam", ".AS"),
         (".PA  — Euronext Paris", ".PA"),
@@ -130,17 +130,17 @@ def run_setup():
     for i, (label, _) in enumerate(EXCHANGES, 1):
         console.print(f"    [bold]{i}.[/bold] {label}")
 
-    console.print(f"    [dim](текущая: {existing.default_exchange_suffix})[/dim]")
+    console.print(f"    [dim](current: {existing.default_exchange_suffix})[/dim]")
     ex_idx = _pick(EXCHANGES)
     exchange_suffix = EXCHANGES[ex_idx][1]
-    _say(f"Биржа: [bold]{exchange_suffix}[/bold]", "green")
+    _say(f"Exchange: [bold]{exchange_suffix}[/bold]", "green")
 
     # ── Currency ──────────────────────────────────────────────────────────────
-    _say("Валюта портфеля:")
+    _say("Portfolio currency:")
     CURRENCIES = ["EUR", "USD", "GBP", "CHF"]
     for i, c in enumerate(CURRENCIES, 1):
         console.print(f"    [bold]{i}.[/bold] {c}")
-    console.print(f"    [dim](текущая: {existing.currency})[/dim]")
+    console.print(f"    [dim](current: {existing.currency})[/dim]")
     cur_default = next((i for i, c in enumerate(CURRENCIES) if c == existing.currency), 0)
     cur_raw = Prompt.ask("  [cyan]>[/cyan]", default=str(cur_default + 1), console=console)
     try:
@@ -148,25 +148,62 @@ def run_setup():
     except (ValueError, IndexError):
         currency = "EUR"
 
+    # ── AI Analysis (optional) ────────────────────────────────────────────────
+    _say("AI Analysis in the dashboard (optional):")
+    _say("[dim]Adds a 'Generate Analysis' button — AI reviews your portfolio like a financial advisor.[/dim]")
+    AI_PROVIDERS = ["Anthropic (Claude)", "OpenAI (o3)", "Google Gemini", "Skip"]
+    for i, p in enumerate(AI_PROVIDERS, 1):
+        console.print(f"    [bold]{i}.[/bold] {p}")
+    console.print(f"    [dim](current: {existing.ai_provider or 'not configured'})[/dim]")
+    ai_idx = _pick(AI_PROVIDERS)
+    _PROVIDER_MAP = {0: "anthropic", 1: "openai", 2: "gemini", 3: ""}
+    ai_provider = _PROVIDER_MAP[ai_idx]
+    ai_api_key = existing.ai_api_key
+    ai_model = existing.ai_model
+
+    if ai_provider:
+        ai_api_key = Prompt.ask(
+            "  [cyan]>[/cyan] API key",
+            password=True,
+            default=existing.ai_api_key or "",
+            console=console,
+        )
+        _DEFAULT_MODELS = {
+            "anthropic": "claude-opus-4-6",
+            "openai": "o3",
+            "gemini": "gemini-2.5-pro",
+        }
+        ai_model = Prompt.ask(
+            f"  [cyan]>[/cyan] Model (Enter = {_DEFAULT_MODELS[ai_provider]})",
+            default=existing.ai_model or "",
+            console=console,
+        )
+        _say(f"AI provider: [bold]{ai_provider}[/bold]", "green")
+    else:
+        _say("AI Analysis: skipped.", "dim")
+
     # ── Summary & confirm ─────────────────────────────────────────────────────
     console.print()
     table = Table(box=box.ROUNDED, border_style="cyan", show_header=False, padding=(0, 2))
     table.add_column(style="dim")
     table.add_column(style="bold")
     if name:
-        table.add_row("Имя", name)
-    table.add_row("Страна", "Германия (DE)" if country == "DE" else country)
+        table.add_row("Name", name)
+    table.add_row("Country", "Germany (DE)" if country == "DE" else country)
     table.add_row("Freistellungsauftrag", f"€{fsa:,.0f}")
     table.add_row("Abgeltungssteuer", f"{abgeltung * 100:.0f}%")
     table.add_row("Solidaritätszuschlag", f"{soli * 100:.1f}%")
-    table.add_row("Kirchensteuer", "да" if kirche else "нет")
-    table.add_row("Биржа (Yahoo Finance)", exchange_suffix)
-    table.add_row("Валюта", currency)
+    table.add_row("Kirchensteuer", "yes" if kirche else "no")
+    table.add_row("Exchange (Yahoo Finance)", exchange_suffix)
+    table.add_row("Currency", currency)
+    if ai_provider:
+        table.add_row("AI Provider", ai_provider)
+        table.add_row("AI Model", ai_model or "(default)")
     console.print(table)
 
-    _say("Сохранить эти настройки?")
+    _say("Save these settings?")
     if not _yesno("", default=True):
-        _say("Отменено. Настройки не изменены.", "yellow")
+        _say("Cancelled. Settings unchanged.", "yellow")
         raise typer.Exit()
 
     cfg = AppConfig(
@@ -178,13 +215,16 @@ def run_setup():
         currency=currency,
         default_exchange_suffix=exchange_suffix,
         user_name=name,
+        ai_provider=ai_provider,
+        ai_api_key=ai_api_key,
+        ai_model=ai_model,
     )
     save_config(cfg)
 
     console.print()
     console.print(Panel.fit(
-        "[bold green]✓ Настройки сохранены в config.json[/bold green]\n\n"
-        "[dim]Запусти [bold]pt setup run[/bold] снова чтобы изменить.[/dim]",
+        "[bold green]✓ Settings saved to config.json[/bold green]\n\n"
+        "[dim]Run [bold]pt setup run[/bold] again to change.[/dim]",
         border_style="green",
         padding=(0, 2),
     ))

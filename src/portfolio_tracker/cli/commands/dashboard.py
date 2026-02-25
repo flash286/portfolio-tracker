@@ -203,6 +203,7 @@ def _collect_data(portfolio_id: int) -> dict:
     deviation_data.sort(key=lambda x: float(x["target"]), reverse=True)
 
     return {
+        "portfolio_id": portfolio_id,
         "portfolio_name": portfolio.name,
         "generated_at": datetime.now().isoformat(),
         "summary": {
@@ -228,6 +229,11 @@ def _collect_data(portfolio_id: int) -> dict:
             **_collect_vp_fsa(portfolio_id),
         },
         "freistellungsauftrag": float(get_config().freistellungsauftrag),
+        "ai": {
+            "provider": get_config().ai_provider,
+            "api_key": get_config().ai_api_key,
+            "model": get_config().ai_model,
+        },
         "allocation_by_type": {k: v for k, v in alloc_by_type.items()},
         "holdings": holdings_data,
         "deviations": deviation_data,
@@ -297,6 +303,22 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .tax-item.highlight .tv { font-size: 20px; }
   .tooltip { position: absolute; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 12px; pointer-events: none; opacity: 0; transition: opacity 0.15s; white-space: nowrap; z-index: 10; }
   .tfs-badge { color: var(--amber); font-size: 12px; font-weight: 600; }
+  .ai-btn { background: linear-gradient(135deg,#6366f1,#a855f7); border: none; color: #fff; padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .2s; }
+  .ai-btn:hover { opacity: .85; } .ai-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .ai-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .ai-insight { background: var(--surface2); border-left: 3px solid var(--blue); padding: 14px 16px; border-radius: 0 8px 8px 0; margin-bottom: 10px; font-size: 14px; line-height: 1.6; }
+  .ai-insight.green { border-left-color: var(--green); } .ai-insight.amber { border-left-color: var(--amber); }
+  .ai-insight.red { border-left-color: var(--red); } .ai-insight.purple { border-left-color: var(--purple); }
+  .ai-insight strong { display: block; margin-bottom: 3px; font-size: 15px; }
+  .ai-section-hdr { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--text2); margin: 18px 0 8px; }
+  .ai-error { color: var(--red); background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3); border-radius: 8px; padding: 14px; font-size: 14px; }
+  .ai-no-key { color: var(--text2); font-size: 14px; line-height: 1.8; }
+  .ai-no-key code { background: var(--surface2); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  .rec-list { background: var(--surface2); border-radius: 8px; padding: 4px 12px; }
+  .rec-item { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .rec-item:last-child { border-bottom: none; }
+  .rec-num { font-weight: 700; color: #a855f7; min-width: 18px; }
 </style>
 </head>
 <body>
@@ -504,6 +526,162 @@ function copyMarkdown() {
   });
 }
 
+// ── AI Analysis ──────────────────────────────────────────────────────────────
+
+function buildPrompt() {
+  const fsa = D.freistellungsauftrag;
+  const system = `You are a financial advisor for a German ETF investor (tax resident in Germany).
+German capital gains tax: Abgeltungssteuer 25% + Solidaritaetszuschlag 5.5%.
+Teilfreistellung (partial exemption): equity ETF = 30%, bond ETF = 0%.
+Freistellungsauftrag (annual tax-free allowance) = EUR ${fsa}.
+Respond ONLY with valid JSON (no markdown fences, no extra text) matching this schema exactly:
+{
+  "overall": {"rating":"strong|good|fair|weak","summary":"2-3 sentences"},
+  "performance": {
+    "winners":[{"ticker":"","note":""}],
+    "losers":[{"ticker":"","note":""}]
+  },
+  "risk": {"level":"low|medium|high","findings":["...","..."]},
+  "tax": {"fsa_note":"...","vp_note":"...","action_needed":true},
+  "recommendations":[{"priority":1,"text":"...","color":"green|amber|red|blue|purple"}]
+}`;
+  return { system, user: generateMarkdown() };
+}
+
+async function _callAnthropic(key, model, system, user) {
+  const m = model || 'claude-opus-4-6';
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'interleaved-thinking-2025-05-14',
+      'anthropic-dangerous-direct-browser-access': 'true',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: m,
+      max_tokens: 12000,
+      thinking: { type: 'enabled', budget_tokens: 8000 },
+      system,
+      messages: [{ role: 'user', content: user }],
+    }),
+  });
+  if (!r.ok) throw new Error('Anthropic ' + r.status + ': ' + await r.text());
+  const data = await r.json();
+  const textBlock = data.content.find(b => b.type === 'text');
+  return textBlock ? textBlock.text : '';
+}
+
+async function _callOpenAI(key, model, system, user) {
+  const m = model || 'o3';
+  const r = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: m,
+      max_completion_tokens: 4096,
+      messages: [{ role: 'developer', content: system }, { role: 'user', content: user }],
+    }),
+  });
+  if (!r.ok) throw new Error('OpenAI ' + r.status + ': ' + await r.text());
+  return (await r.json()).choices[0].message.content;
+}
+
+async function _callGemini(key, model, system, user) {
+  const m = model || 'gemini-2.5-pro';
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent?key=' + key;
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: system }] },
+      contents: [{ role: 'user', parts: [{ text: user }] }],
+      generationConfig: { maxOutputTokens: 4096, thinkingConfig: { thinkingBudget: 8000 } },
+    }),
+  });
+  if (!r.ok) throw new Error('Gemini ' + r.status + ': ' + await r.text());
+  const parts = (await r.json()).candidates[0].content.parts;
+  const textPart = parts.find(p => p.text && !p.thought) || parts[parts.length - 1];
+  return textPart.text;
+}
+
+async function runAiAnalysis() {
+  const btn = document.getElementById('ai-btn');
+  const out = document.getElementById('ai-output');
+  const ai = D.ai || {};
+
+  if (!ai.provider || !ai.api_key) {
+    out.innerHTML = '<div class="ai-no-key">'
+      + 'Configure an AI provider first. Run <code>pt setup run</code> and choose a provider,<br>'
+      + 'or add these keys to <code>config.json</code> at the project root:<br><br>'
+      + '<code>"ai_provider": "anthropic"</code> &nbsp;(or <code>"openai"</code> / <code>"gemini"</code>)<br>'
+      + '<code>"ai_api_key": "your-key-here"</code><br>'
+      + 'Then reopen the dashboard: <code>pt dashboard open ' + (D.portfolio_id || '&lt;id&gt;') + '</code>'
+      + '</div>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="ai-spinner"></span>Analyzing\u2026';
+  out.innerHTML = '';
+
+  try {
+    const { system, user } = buildPrompt();
+    let text;
+    if      (ai.provider === 'anthropic') text = await _callAnthropic(ai.api_key, ai.model, system, user);
+    else if (ai.provider === 'openai')    text = await _callOpenAI(ai.api_key, ai.model, system, user);
+    else if (ai.provider === 'gemini')    text = await _callGemini(ai.api_key, ai.model, system, user);
+    else throw new Error('Unknown provider: ' + ai.provider);
+
+    text = text.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '');
+    renderAiResult(JSON.parse(text));
+  } catch (err) {
+    out.innerHTML = '<div class="ai-error"><strong>Analysis failed:</strong> ' + err.message + '</div>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Regenerate';
+  }
+}
+
+function renderAiResult(r) {
+  const out = document.getElementById('ai-output');
+  const ratingColor = { strong: 'green', good: 'blue', fair: 'amber', weak: 'red' };
+  const lvlColor    = { low: 'green', medium: 'amber', high: 'red' };
+
+  const winHtml = (r.performance && r.performance.winners || []).map(w =>
+    '<div class="ai-insight green"><strong>' + w.ticker + '</strong>' + w.note + '</div>'
+  ).join('');
+  const loseHtml = (r.performance && r.performance.losers || []).map(l =>
+    '<div class="ai-insight red"><strong>' + l.ticker + '</strong>' + l.note + '</div>'
+  ).join('');
+  const riskHtml = (r.risk && r.risk.findings || []).map(f =>
+    '<div class="ai-insight ' + (lvlColor[r.risk && r.risk.level] || 'amber') + '">' + f + '</div>'
+  ).join('');
+  const recsHtml = (r.recommendations || []).slice().sort((a, b) => a.priority - b.priority).map(rec =>
+    '<div class="rec-item"><span class="rec-num">' + rec.priority + '.</span><span>' + rec.text + '</span></div>'
+  ).join('');
+  const taxColor = (r.tax && r.tax.action_needed) ? 'amber' : 'green';
+  const taxTitle = (r.tax && r.tax.action_needed) ? 'Action needed' : 'Tax situation OK';
+  const vpNote   = (r.tax && r.tax.vp_note) ? '<div class="ai-insight blue">' + r.tax.vp_note + '</div>' : '';
+
+  out.innerHTML =
+    '<div class="ai-insight ' + (ratingColor[r.overall && r.overall.rating] || 'blue') + '">'
+    + '<strong>Overall: ' + ((r.overall && r.overall.rating) || '').toUpperCase() + '</strong>'
+    + (r.overall && r.overall.summary || '')
+    + '</div>'
+    + '<div class="ai-section-hdr">Performance Highlights</div>'
+    + winHtml + loseHtml
+    + '<div class="ai-section-hdr">Risk &amp; Diversification</div>'
+    + riskHtml
+    + '<div class="ai-section-hdr">Tax Optimization</div>'
+    + '<div class="ai-insight ' + taxColor + '"><strong>' + taxTitle + '</strong>'
+    + (r.tax && r.tax.fsa_note || '') + '</div>'
+    + vpNote
+    + '<div class="ai-section-hdr">Recommendations</div>'
+    + '<div class="rec-list">' + recsHtml + '</div>';
+}
+
 function render() {
   const app = document.getElementById('app');
   const s = D.summary;
@@ -580,10 +758,29 @@ function render() {
       </div>
     </div>
 
+    <div class="card" id="ai-card" style="margin-bottom:32px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+        <div>
+          <h2 style="font-size:18px;font-weight:600;margin-bottom:0">AI Analysis</h2>
+          <span style="font-size:12px;color:var(--text2)" id="ai-provider-label"></span>
+        </div>
+        <button class="ai-btn" id="ai-btn" onclick="runAiAnalysis()">Generate Analysis</button>
+      </div>
+      <div id="ai-output"></div>
+    </div>
+
     <div style="text-align:center;padding:24px 0;color:var(--text2);font-size:12px">
       Portfolio Tracker Dashboard &bull; ${dateStr}
     </div>
   `;
+
+  // AI provider label
+  const aiLabel = document.getElementById('ai-provider-label');
+  if (D.ai && D.ai.provider) {
+    aiLabel.textContent = D.ai.provider + (D.ai.model ? ' · ' + D.ai.model : '');
+  } else {
+    aiLabel.innerHTML = 'No provider — run <code style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:11px">pt setup run</code> to configure';
+  }
 
   // Draw donut charts
   const holdingItems = D.holdings.filter(h => h.weight > 0).map(h => ({

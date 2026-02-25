@@ -17,6 +17,9 @@ class AppConfig:
     currency: str = "EUR"
     default_exchange_suffix: str = ".DE"
     user_name: str = ""
+    ai_provider: str = ""   # "anthropic" | "openai" | "gemini" | ""
+    ai_api_key: str = ""
+    ai_model: str = ""      # empty = use provider default
 
 
 _DEFAULTS = AppConfig()
@@ -47,6 +50,9 @@ def get_config() -> AppConfig:
             currency=data.get("currency", _DEFAULTS.currency),
             default_exchange_suffix=data.get("default_exchange_suffix", _DEFAULTS.default_exchange_suffix),
             user_name=data.get("user_name", ""),
+            ai_provider=data.get("ai_provider", ""),
+            ai_api_key=data.get("ai_api_key", ""),
+            ai_model=data.get("ai_model", ""),
         )
     except Exception:
         _cached = AppConfig()
@@ -65,5 +71,8 @@ def save_config(cfg: AppConfig) -> None:
         "currency": cfg.currency,
         "default_exchange_suffix": cfg.default_exchange_suffix,
         "user_name": cfg.user_name,
+        "ai_provider": cfg.ai_provider,
+        "ai_api_key": cfg.ai_api_key,
+        "ai_model": cfg.ai_model,
     }
     _config_path().write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")

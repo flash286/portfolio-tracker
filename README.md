@@ -23,6 +23,7 @@ CLI tool for tracking ETF portfolios with full **German tax support** — Abgelt
 - **Rebalancing** — set target allocations by ISIN or asset type, get trade suggestions
 - **Price history** — automatic fetching via yfinance for European ETFs (`.DE`, `.L`, `.AS` …)
 - **Web dashboard** — offline single-page app with donut charts, tax summary, Markdown export
+- **AI Analysis** — one-click portfolio review by Claude / GPT / Gemini built into the dashboard
 - **Cash tracking** — full cash flow ledger (top-ups, buys, sells, dividends, fees)
 - **Revolut CSV import** — one-command idempotent import of full transaction history
 - **AI import** — Claude Code skill `/portfolio import` imports from any broker CSV without custom code
@@ -40,6 +41,7 @@ CLI tool for tracking ETF portfolios with full **German tax support** — Abgelt
 - [Tax commands](#tax-commands)
 - [Rebalancing](#rebalancing)
 - [Web dashboard](#web-dashboard)
+- [AI Analysis](#ai-analysis)
 - [Cash management](#cash-management)
 - [AI integration](#ai-integration-claude-code)
 - [CLI reference](#cli-reference)
@@ -248,6 +250,58 @@ Offline single-page app — no CDN, no network required after opening. Features:
 - **Tax Summary** — Vorabpauschale FSA usage, TFS exemption, Abgeltungssteuer estimate
 - Target vs. Actual allocation bars
 - **Copy as Markdown** — exports a full portfolio snapshot for AI review
+- **AI Analysis** — one-click deep analysis by your configured AI provider (see below)
+
+---
+
+## AI Analysis
+
+The dashboard includes a built-in **AI Analysis** panel powered by your choice of LLM. Click **Generate Analysis** to get a structured financial advisor review of your portfolio.
+
+![AI Analysis](docs/screen%20-3.png)
+
+### What the AI produces
+
+| Section | Content |
+|---------|---------|
+| **Overall** | Rating (strong / good / fair / weak) + 2–3 sentence summary |
+| **Performance Highlights** | Top winners and underperformers with commentary |
+| **Risk & Diversification** | Concentration risk, geographic exposure, ETF overlap warnings |
+| **Tax Optimization** | Freistellungsauftrag usage, Vorabpauschale notes, actions needed |
+| **Recommendations** | Numbered, prioritised action items |
+
+### Supported providers
+
+| Provider | Default model | Reasoning |
+|----------|--------------|-----------|
+| **Anthropic** | `claude-opus-4-6` | Extended thinking (8k budget tokens) |
+| **OpenAI** | `o3` | Native chain-of-thought reasoning |
+| **Google Gemini** | `gemini-2.5-pro` | Thinking budget 8k tokens |
+
+### Setup
+
+```bash
+pt setup run
+# → answer the "AI Analysis" step at the end
+# → choose provider, paste API key, optionally override model
+```
+
+Or edit `config.json` directly:
+
+```json
+"ai_provider": "anthropic",
+"ai_api_key": "sk-ant-...",
+"ai_model": ""
+```
+
+Then reopen the dashboard:
+
+```bash
+pt dashboard open 1
+```
+
+> The API key is stored only in `config.json` (gitignored) and embedded in the locally-generated
+> temp HTML file. It is never sent anywhere except the chosen provider's API endpoint.
 
 ---
 
