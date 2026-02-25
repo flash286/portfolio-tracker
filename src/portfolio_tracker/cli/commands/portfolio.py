@@ -9,6 +9,7 @@ from ...data.repositories.portfolios_repo import PortfoliosRepository
 from ...data.repositories.holdings_repo import HoldingsRepository
 from ...data.repositories.prices_repo import PricesRepository
 from ...core.calculator import PortfolioCalculator
+from ...core.models import Portfolio
 
 app = typer.Typer(help="Manage portfolios")
 console = Console()
@@ -25,7 +26,7 @@ def create(
 ):
     """Create a new portfolio."""
     try:
-        p = repo.create(name, description)
+        p = repo.create(Portfolio(name=name, description=description))
         console.print(f"[green]Portfolio '{p.name}' created (ID: {p.id})[/green]")
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")

@@ -10,7 +10,7 @@ from typing import Optional
 from rich.console import Console
 from rich.prompt import Prompt
 
-from ..core.models import AssetType, CashTransactionType, TransactionType
+from ..core.models import AssetType, CashTransaction, CashTransactionType, Holding, Portfolio, TaxLot, Transaction, TransactionType
 from ..data.database import get_db
 from ..data.repositories.cash_repo import CashRepository
 from ..data.repositories.holdings_repo import HoldingsRepository
@@ -81,10 +81,10 @@ class RevolutImporter(BaseImporter):
         existing = portfolios_repo.get_by_name(self.portfolio_name)
         if existing:
             return existing
-        return portfolios_repo.create(
-            self.portfolio_name,
-            "Revolut Robo-Advisor — imported via pt import revolut",
-        )
+        return portfolios_repo.create(Portfolio(
+            name=self.portfolio_name,
+            description="Revolut Robo-Advisor — imported via pt import revolut",
+        ))
 
     # ------------------------------------------------------------------
     # Holdings pre-scan
@@ -135,14 +135,14 @@ class RevolutImporter(BaseImporter):
                 holding_map[ticker] = existing.id
                 result.holdings_skipped += 1
             else:
-                h = holdings_repo.create(
-                    portfolio_id,
-                    isin,
-                    AssetType(meta["type"]),
+                h = holdings_repo.create(Holding(
+                    portfolio_id=portfolio_id,
+                    isin=isin,
+                    asset_type=AssetType(meta["type"]),
                     name=meta["name"],
                     ticker=ticker,
                     teilfreistellung_rate=Decimal(meta["tfs"]),
-                )
+                ))
                 holding_map[ticker] = h.id
                 result.holdings_created += 1
 
@@ -228,26 +228,25 @@ class RevolutImporter(BaseImporter):
                 result.warnings.append(f"Line {lineno}: parse error {e}, skipped")
                 return
 
-            tx = tx_repo.create(
-                holding_map[ticker],
-                TransactionType.BUY,
-                qty,
-                price,
-                dt,
+            tx = tx_repo.create(Transaction(
+                holding_id=holding_map[ticker],
+                transaction_type=TransactionType.BUY,
+                quantity=qty, price=price, transaction_date=dt,
                 notes="Revolut CSV import",
-                source_id=sid,
-            )
+            ), source_id=sid)
             if tx is not None:
                 lots_repo = LotsRepository()
-                lots_repo.create(holding_map[ticker], dt, qty, price, buy_transaction_id=tx.id)
-                cash_repo.create(
-                    portfolio_id,
-                    CashTransactionType.BUY,
-                    -total,
-                    dt,
+                lots_repo.create(TaxLot(
+                    holding_id=holding_map[ticker], acquired_date=dt,
+                    quantity=qty, cost_per_unit=price, quantity_remaining=qty,
+                    buy_transaction_id=tx.id,
+                ))
+                cash_repo.create(CashTransaction(
+                    portfolio_id=portfolio_id,
+                    cash_type=CashTransactionType.BUY,
+                    amount=-total, transaction_date=dt,
                     description=f"Buy {ticker} ({qty} × €{price})",
-                    source_id=f"{sid}:cash",
-                )
+                ), source_id=f"{sid}:cash")
                 result.buys_imported += 1
                 result.cash_imported += 1
             else:
@@ -263,24 +262,19 @@ class RevolutImporter(BaseImporter):
                 result.warnings.append(f"Line {lineno}: parse error {e}, skipped")
                 return
 
-            tx = tx_repo.create(
-                holding_map[ticker],
-                TransactionType.DIVIDEND,
-                Decimal("0"),
-                amount,
-                dt,
+            tx = tx_repo.create(Transaction(
+                holding_id=holding_map[ticker],
+                transaction_type=TransactionType.DIVIDEND,
+                quantity=Decimal("0"), price=amount, transaction_date=dt,
                 notes="Revolut dividend",
-                source_id=sid,
-            )
+            ), source_id=sid)
             if tx is not None:
-                cash_repo.create(
-                    portfolio_id,
-                    CashTransactionType.DIVIDEND,
-                    amount,
-                    dt,
+                cash_repo.create(CashTransaction(
+                    portfolio_id=portfolio_id,
+                    cash_type=CashTransactionType.DIVIDEND,
+                    amount=amount, transaction_date=dt,
                     description=f"Dividend from {ticker}",
-                    source_id=f"{sid}:cash",
-                )
+                ), source_id=f"{sid}:cash")
                 result.dividends_imported += 1
                 result.cash_imported += 1
             else:
@@ -294,14 +288,12 @@ class RevolutImporter(BaseImporter):
                 result.warnings.append(f"Line {lineno}: parse error {e}, skipped")
                 return
 
-            ct = cash_repo.create(
-                portfolio_id,
-                CashTransactionType.TOP_UP,
-                amount,
-                dt,
+            ct = cash_repo.create(CashTransaction(
+                portfolio_id=portfolio_id,
+                cash_type=CashTransactionType.TOP_UP,
+                amount=amount, transaction_date=dt,
                 description="Revolut top-up",
-                source_id=sid,
-            )
+            ), source_id=sid)
             if ct is not None:
                 result.cash_imported += 1
             else:
@@ -314,14 +306,12 @@ class RevolutImporter(BaseImporter):
                 result.warnings.append(f"Line {lineno}: parse error {e}, skipped")
                 return
 
-            ct = cash_repo.create(
-                portfolio_id,
-                CashTransactionType.FEE,
-                fee,
-                dt,
+            ct = cash_repo.create(CashTransaction(
+                portfolio_id=portfolio_id,
+                cash_type=CashTransactionType.FEE,
+                amount=fee, transaction_date=dt,
                 description="Robo management fee",
-                source_id=sid,
-            )
+            ), source_id=sid)
             if ct is not None:
                 result.cash_imported += 1
             else:
@@ -337,6 +327,9 @@ class RevolutImporter(BaseImporter):
         tx_repo = TransactionsRepository()
 
         for _ticker, hid in holding_map.items():
+            h = holdings_repo.get_by_id(hid)
+            if h is None:
+                continue
             txs = tx_repo.list_by_holding(hid)
             total_shares = Decimal("0")
             total_cost = Decimal("0")
@@ -344,7 +337,9 @@ class RevolutImporter(BaseImporter):
                 if tx.transaction_type == TransactionType.BUY:
                     total_shares += tx.quantity
                     total_cost += tx.quantity * tx.price
-            holdings_repo.update_shares_and_cost(hid, total_shares, total_cost)
+            h.shares = total_shares
+            h.cost_basis = total_cost
+            holdings_repo.save(h)
 
     # ------------------------------------------------------------------
     # P&L metadata extraction

@@ -8,7 +8,7 @@ from rich.console import Console
 from rich.table import Table
 
 from ...core.exceptions import InsufficientSharesError
-from ...core.models import CashTransactionType, TransactionType
+from ...core.models import CashTransaction, CashTransactionType, TaxLot, Transaction, TransactionType
 from ...data.database import get_db
 from ...data.repositories.cash_repo import CashRepository
 from ...data.repositories.holdings_repo import HoldingsRepository
@@ -80,11 +80,18 @@ def _record_transaction(
 
     db = get_db()
     with db.transaction():
-        tx = tx_repo.create(holding_id, tx_type, qty, prc, tx_date, notes,
-                            realized_gain=realized_gain)
+        tx = tx_repo.create(Transaction(
+            holding_id=holding_id, transaction_type=tx_type,
+            quantity=qty, price=prc, transaction_date=tx_date, notes=notes,
+            realized_gain=realized_gain,
+        ))
 
         if tx_type == TransactionType.BUY:
-            lots_repo.create(holding_id, tx_date, qty, prc, buy_transaction_id=tx.id)
+            lots_repo.create(TaxLot(
+                holding_id=holding_id, acquired_date=tx_date,
+                quantity=qty, cost_per_unit=prc, quantity_remaining=qty,
+                buy_transaction_id=tx.id,
+            ))
             new_shares = h.shares + qty
             new_cost = h.cost_basis + (qty * prc)
         else:  # SELL
@@ -93,19 +100,23 @@ def _record_transaction(
             new_shares = h.shares - qty
             new_cost = lots_repo.get_fifo_cost_basis(holding_id)
 
-        holdings_repo.update_shares_and_cost(holding_id, new_shares, new_cost)
+        h.shares = new_shares
+        h.cost_basis = new_cost
+        holdings_repo.save(h)
 
         # Record cash impact
         if tx_type == TransactionType.BUY:
-            cash_repo.create(
-                h.portfolio_id, CashTransactionType.BUY, -(qty * prc), tx_date,
+            cash_repo.create(CashTransaction(
+                portfolio_id=h.portfolio_id, cash_type=CashTransactionType.BUY,
+                amount=-(qty * prc), transaction_date=tx_date,
                 description=f"Buy {h.ticker or h.isin}",
-            )
+            ))
         else:
-            cash_repo.create(
-                h.portfolio_id, CashTransactionType.SELL, qty * prc, tx_date,
+            cash_repo.create(CashTransaction(
+                portfolio_id=h.portfolio_id, cash_type=CashTransactionType.SELL,
+                amount=qty * prc, transaction_date=tx_date,
                 description=f"Sell {h.ticker or h.isin}",
-            )
+            ))
 
     action = "Bought" if tx_type == TransactionType.BUY else "Sold"
     cash_balance = cash_repo.get_balance(h.portfolio_id)

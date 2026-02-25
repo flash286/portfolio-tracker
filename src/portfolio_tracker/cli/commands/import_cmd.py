@@ -1,5 +1,6 @@
 """CLI commands for importing broker CSV exports."""
 
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -9,7 +10,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich import box
 
-from ...core.models import AssetType
+from ...core.models import AssetType, PricePoint
 from ...data.repositories.holdings_repo import HoldingsRepository
 from ...data.repositories.prices_repo import PricesRepository
 from ...external.price_fetcher import PriceFetcher
@@ -126,7 +127,9 @@ def _fetch_prices_for_portfolio(portfolio_id: int) -> None:
         try:
             price = fetcher.fetch_price(lookup)
             if price is not None:
-                prices_repo.store_price(h.id, price, source="yfinance")
+                prices_repo.store_price(PricePoint(
+                    holding_id=h.id, price=price, fetch_date=datetime.now(), source="yfinance",
+                ))
                 console.print(f"  [green]✓[/green] {lookup}: €{price:,.4f}")
                 ok += 1
             else:

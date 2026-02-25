@@ -7,7 +7,11 @@ import pytest
 
 from portfolio_tracker.core.models import (
     AssetType,
+    CashTransaction,
     CashTransactionType,
+    Holding,
+    Portfolio,
+    Transaction,
     TransactionType,
 )
 from portfolio_tracker.data.repositories.cash_repo import CashRepository
@@ -17,11 +21,13 @@ from portfolio_tracker.data.repositories.transactions_repo import TransactionsRe
 
 
 def _make_portfolio(name="Test"):
-    return PortfoliosRepository().create(name)
+    return PortfoliosRepository().create(Portfolio(name=name))
 
 
 def _make_holding(portfolio_id, isin="IE00B4L5Y983", ticker="IWDA"):
-    return HoldingsRepository().create(portfolio_id, isin, AssetType.ETF, ticker=ticker)
+    return HoldingsRepository().create(Holding(
+        portfolio_id=portfolio_id, isin=isin, asset_type=AssetType.ETF, ticker=ticker,
+    ))
 
 
 class TestTransactionContextManager:
@@ -31,7 +37,7 @@ class TestTransactionContextManager:
 
         with pytest.raises(RuntimeError):
             with isolated_db.transaction():
-                portfolios_repo.create("Should Be Rolled Back")
+                portfolios_repo.create(Portfolio(name="Should Be Rolled Back"))
                 raise RuntimeError("Forced rollback")
 
         assert portfolios_repo.list_all() == []
@@ -42,8 +48,10 @@ class TestTransactionContextManager:
         holdings_repo = HoldingsRepository()
 
         with isolated_db.transaction():
-            p = portfolios_repo.create("Committed Portfolio")
-            holdings_repo.create(p.id, "IE00B4L5Y983", AssetType.ETF, ticker="IWDA")
+            p = portfolios_repo.create(Portfolio(name="Committed Portfolio"))
+            holdings_repo.create(Holding(
+                portfolio_id=p.id, isin="IE00B4L5Y983", asset_type=AssetType.ETF, ticker="IWDA",
+            ))
 
         portfolios = portfolios_repo.list_all()
         assert len(portfolios) == 1
@@ -86,9 +94,17 @@ class TestBuyAtomicity:
 
         with pytest.raises(RuntimeError):
             with isolated_db.transaction():
-                tx_repo.create(h.id, TransactionType.BUY, qty, prc, now)
-                holdings_repo.update_shares_and_cost(h.id, qty, qty * prc)
-                cash_repo.create(p.id, CashTransactionType.BUY, -(qty * prc), now)
+                tx_repo.create(Transaction(
+                    holding_id=h.id, transaction_type=TransactionType.BUY,
+                    quantity=qty, price=prc, transaction_date=now,
+                ))
+                h.shares = qty
+                h.cost_basis = qty * prc
+                holdings_repo.save(h)
+                cash_repo.create(CashTransaction(
+                    portfolio_id=p.id, cash_type=CashTransactionType.BUY,
+                    amount=-(qty * prc), transaction_date=now,
+                ))
 
         # Everything rolled back
         h_after = HoldingsRepository().get_by_id(h.id)
@@ -108,15 +124,32 @@ class TestBuyAtomicity:
 
         # BUY
         with isolated_db.transaction():
-            tx_repo.create(h.id, TransactionType.BUY, Decimal("10"), Decimal("50"), now)
-            holdings_repo.update_shares_and_cost(h.id, Decimal("10"), Decimal("500"))
-            cash_repo.create(p.id, CashTransactionType.BUY, Decimal("-500"), now)
+            tx_repo.create(Transaction(
+                holding_id=h.id, transaction_type=TransactionType.BUY,
+                quantity=Decimal("10"), price=Decimal("50"), transaction_date=now,
+            ))
+            h.shares = Decimal("10")
+            h.cost_basis = Decimal("500")
+            holdings_repo.save(h)
+            cash_repo.create(CashTransaction(
+                portfolio_id=p.id, cash_type=CashTransactionType.BUY,
+                amount=Decimal("-500"), transaction_date=now,
+            ))
 
         # SELL
+        h = holdings_repo.get_by_id(h.id)  # refresh
         with isolated_db.transaction():
-            tx_repo.create(h.id, TransactionType.SELL, Decimal("5"), Decimal("60"), now)
-            holdings_repo.update_shares_and_cost(h.id, Decimal("5"), Decimal("250"))
-            cash_repo.create(p.id, CashTransactionType.SELL, Decimal("300"), now)
+            tx_repo.create(Transaction(
+                holding_id=h.id, transaction_type=TransactionType.SELL,
+                quantity=Decimal("5"), price=Decimal("60"), transaction_date=now,
+            ))
+            h.shares = Decimal("5")
+            h.cost_basis = Decimal("250")
+            holdings_repo.save(h)
+            cash_repo.create(CashTransaction(
+                portfolio_id=p.id, cash_type=CashTransactionType.SELL,
+                amount=Decimal("300"), transaction_date=now,
+            ))
 
         h_after = holdings_repo.get_by_id(h.id)
         assert h_after.shares == Decimal("5")
@@ -133,7 +166,9 @@ class TestRebalanceAtomicity:
 
         holdings_repo = HoldingsRepository()
         tx_repo = TransactionsRepository()
-        holdings_repo.update_shares_and_cost(h1.id, Decimal("10"), Decimal("1000"))
+        h1.shares = Decimal("10")
+        h1.cost_basis = Decimal("1000")
+        holdings_repo.save(h1)
 
         call_count = [0]
         original_create = TransactionsRepository.create
@@ -150,10 +185,18 @@ class TestRebalanceAtomicity:
         with pytest.raises(RuntimeError):
             with isolated_db.transaction():
                 # First trade
-                tx_repo.create(h1.id, TransactionType.SELL, Decimal("5"), Decimal("100"), now)
-                holdings_repo.update_shares_and_cost(h1.id, Decimal("5"), Decimal("500"))
+                tx_repo.create(Transaction(
+                    holding_id=h1.id, transaction_type=TransactionType.SELL,
+                    quantity=Decimal("5"), price=Decimal("100"), transaction_date=now,
+                ))
+                h1.shares = Decimal("5")
+                h1.cost_basis = Decimal("500")
+                holdings_repo.save(h1)
                 # Second trade (fails)
-                tx_repo.create(h2.id, TransactionType.BUY, Decimal("5"), Decimal("100"), now)
+                tx_repo.create(Transaction(
+                    holding_id=h2.id, transaction_type=TransactionType.BUY,
+                    quantity=Decimal("5"), price=Decimal("100"), transaction_date=now,
+                ))
 
         # All changes rolled back
         h1_after = HoldingsRepository().get_by_id(h1.id)
