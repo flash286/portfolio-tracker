@@ -3,6 +3,7 @@
 [![CI](https://github.com/flash286/portfolio-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/flash286/portfolio-tracker/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-flash286-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/flash286)
 
 CLI tool for tracking ETF portfolios with full **German tax support** — Abgeltungssteuer, Teilfreistellung, Vorabpauschale, and FIFO cost basis. Designed for European ETF investors with German tax residency.
 
