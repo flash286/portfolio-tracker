@@ -67,6 +67,20 @@ The wizard configures your tax profile (country, FSA amount, Zusammenveranlagung
 church tax, exchange suffix) and optionally sets up an AI provider for dashboard
 analysis. Settings are saved to `config.json` (gitignored).
 
+### Shell completion
+
+Enable tab completion for all `pt` commands and subcommands:
+
+```bash
+# zsh (add to ~/.zshrc)
+eval "$(_PT_COMPLETE=source_zsh pt)"
+
+# bash (add to ~/.bashrc)
+eval "$(_PT_COMPLETE=source_bash pt)"
+```
+
+Restart your shell, then `pt <Tab>` and `pt stats <Tab>` will autocomplete.
+
 ---
 
 ## Quick start
