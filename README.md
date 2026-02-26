@@ -44,18 +44,40 @@ Built for European ETF investors living in Germany.
 
 ## Setup
 
-**Requirements:** Python 3.10+
+**Requirements:** Python 3.10+ and [uv](https://docs.astral.sh/uv/)
 
 ```bash
 git clone https://github.com/flash286/portfolio-tracker.git
 cd portfolio-tracker
 
+make setup     # installs Python deps + dashboard (Node.js optional)
+uv run pt --help
+```
+
+<details>
+<summary>Don't have <code>uv</code> yet?</summary>
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+</details>
+
+<details>
+<summary>Prefer plain pip?</summary>
+
+```bash
 python -m venv .venv
 source .venv/bin/activate      # Windows: .venv\Scripts\activate
-
-pip install -e .
+pip install -e ".[dev]"
 pt --help
 ```
+
+</details>
 
 ### First-run configuration
 
@@ -66,6 +88,16 @@ pt setup run
 The wizard configures your tax profile (country, FSA amount, Zusammenveranlagung,
 church tax, exchange suffix) and optionally sets up an AI provider for dashboard
 analysis. Settings are saved to `config.json` (gitignored).
+
+### Make targets
+
+```bash
+make setup    # install all deps (Python + dashboard)
+make check    # lint + tests
+make dev ID=1 # Vite HMR dev server
+make build    # build dashboard to dist/
+make help     # show all targets
+```
 
 ### Shell completion
 
@@ -270,6 +302,16 @@ pt dashboard open 1 --output /tmp/portfolio.html   # save to file
 
 Opens a local HTTP server at `http://127.0.0.1:<port>` and launches the browser. Press **Ctrl+C** in the terminal to stop. No CDN, no external requests (except the optional AI Analysis call).
 
+### Development mode
+
+```bash
+pt dashboard dev 1                  # legacy live-reload (watches dashboard.html)
+pt dashboard dev 1 --vite           # Preact + Vite HMR (requires Node.js)
+pt dashboard dev 1 --data-refresh   # re-collect portfolio data on each reload
+```
+
+The `--vite` mode starts a Vite dev server with hot module replacement and a Python API backend for live data. Requires Node.js; dependencies are installed automatically on first run.
+
 The dashboard is organised into **5 tabs**:
 
 | Tab | Content |
@@ -404,7 +446,7 @@ pt rebalance  target | check | suggest | execute
 pt cash       balance | history | add
 pt tax        realized | lots | vorabpauschale
 pt import     revolut
-pt dashboard  open
+pt dashboard  open | dev
 pt setup      run
 ```
 
@@ -415,10 +457,11 @@ pt setup      run
 | | |
 |---|---|
 | Language | Python 3.10+ |
+| Package manager | [uv](https://docs.astral.sh/uv/) |
 | CLI | [Typer](https://typer.tiangolo.com) + [Rich](https://github.com/Textualize/rich) |
 | Database | SQLite (`portfolio.db`) |
 | Prices | [yfinance](https://github.com/ranaroussi/yfinance) |
-| Dashboard | Vanilla HTML/JS/SVG — no CDN, no build step |
+| Dashboard | [Preact](https://preactjs.com) + [Vite](https://vite.dev) — builds to a single HTML file |
 | AI Providers | Anthropic Claude, OpenAI, Google Gemini (optional) |
 
 ---

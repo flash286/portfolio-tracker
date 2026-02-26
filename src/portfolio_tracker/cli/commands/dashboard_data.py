@@ -1,6 +1,5 @@
 """Data collection functions for the portfolio dashboard."""
 
-import datetime as _dt
 from datetime import datetime
 from decimal import Decimal
 
@@ -91,11 +90,10 @@ def _collect_realized(portfolio_id: int, holding_by_id: dict, calc) -> dict:
     }
 
 
-def _collect_snapshots(portfolio_id: int) -> list[dict]:
-    """Return last 365 days of snapshots for the performance chart."""
+def _collect_all_snapshots(portfolio_id: int) -> list[dict]:
+    """Return ALL snapshots for the performance chart (client-side period filtering)."""
     from ...data.repositories.snapshots_repo import SnapshotsRepository
-    since = (_dt.date.today() - _dt.timedelta(days=365)).isoformat()
-    snaps = SnapshotsRepository().list_by_portfolio(portfolio_id, since_date=since)
+    snaps = SnapshotsRepository().list_by_portfolio(portfolio_id)
     return [
         {
             "date": s.date,
@@ -105,6 +103,41 @@ def _collect_snapshots(portfolio_id: int) -> list[dict]:
         }
         for s in snaps
     ]
+
+
+def _get_price_freshness(portfolio_id: int) -> dict:
+    """Get the oldest and newest 'latest price' dates across all holdings."""
+    from ...data.database import get_db
+    db = get_db()
+    row = db.conn.execute(
+        """SELECT MIN(latest_date) AS oldest, MAX(latest_date) AS newest
+           FROM (
+               SELECT MAX(ph.fetch_date) AS latest_date
+               FROM holdings h
+               JOIN price_history ph ON ph.holding_id = h.id
+               WHERE h.portfolio_id = ?
+               GROUP BY h.id
+           )""",
+        (portfolio_id,),
+    ).fetchone()
+    return {
+        "prices_oldest_at": row["oldest"] if row and row["oldest"] else None,
+        "prices_newest_at": row["newest"] if row and row["newest"] else None,
+    }
+
+
+def _collect_cash_flows(portfolio_id: int) -> list[dict]:
+    """Return external cash flows (top_up/withdrawal) for client-side TWR calculation."""
+    from ...data.database import get_db
+    db = get_db()
+    rows = db.conn.execute(
+        """SELECT date(transaction_date) AS date, CAST(amount AS REAL) AS amount
+           FROM cash_transactions
+           WHERE portfolio_id = ? AND cash_type IN ('top_up', 'withdrawal')
+           ORDER BY transaction_date""",
+        (portfolio_id,),
+    ).fetchall()
+    return [{"date": r["date"], "amount": Decimal(str(r["amount"]))} for r in rows]
 
 
 def _collect_data(portfolio_id: int) -> dict:
@@ -247,5 +280,7 @@ def _collect_data(portfolio_id: int) -> dict:
         "holdings": holdings_data,
         "deviations": deviation_data,
         "realized": _collect_realized(portfolio_id, holding_by_id, calc),
-        "snapshots": _collect_snapshots(portfolio_id),
+        "snapshots": _collect_all_snapshots(portfolio_id),
+        "cash_flows": _collect_cash_flows(portfolio_id),
+        **_get_price_freshness(portfolio_id),
     }

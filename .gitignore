@@ -24,6 +24,9 @@ user_registry.json
 data/*.csv
 data/*.pdf
 
+# Dashboard (Preact/Vite)
+dashboard/node_modules/
+
 # Claude Code — personal/machine-specific (skills are committed, these are not)
 .claude/settings.local.json
 .claude/projects/
